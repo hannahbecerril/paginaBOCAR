@@ -1,0 +1,26 @@
+name: django-react-v2
+channels:
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - django
+      - djangorestframework
+      - django-cors-headers
+      - djangorestframework-simplejwt
+      - python-dotenv
+      - psycopg2-binary
+      - pillow
+      - django-filter
+      - pandas
+      - numpy
+      - openpyxl
+      - xlrd
+      - matplotlib
+      - seaborn
+      - plotly
+      - requests
+      - django-extensions
+      - ipython
+      - gunicorn
