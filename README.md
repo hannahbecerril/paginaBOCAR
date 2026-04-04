@@ -57,7 +57,7 @@ conda env create -f environment.yml
 Activar el entorno:
 
 ```bash
-conda activate django-react-v2
+conda activate tc3005b-bocar
 ```
 
 ---
