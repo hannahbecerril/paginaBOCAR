@@ -39,7 +39,10 @@ INSTALLED_APPS = [
 'django.contrib.staticfiles',
     'rest_framework',
     'corsheaders',
-
+    'rest_framework_simplejwt',
+    'dj_rest_auth',
+    'rest_framework.authtoken',
+    'django.contrib.sites',
     'api',
 ]
 CORS_ALLOW_ALL_ORIGINS = True
@@ -127,3 +130,15 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+REST_AUTH = {
+    'USE_JWT': True,
+    'JWT_AUTH_COOKIE': 'djangojwtauth_cookie',
+    'JWT_AUTH_REFRESH_COOKIE': 'djangojwtauth_refresh_cookie',
+
+}
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    )
+}

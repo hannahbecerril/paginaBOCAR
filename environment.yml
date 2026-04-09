@@ -1,6 +1,7 @@
 name: tc3005b-bocar
 channels:
   - defaults
+  - conda-forge
 dependencies:
   - python=3.11
   - pip
@@ -9,6 +10,7 @@ dependencies:
       - djangorestframework
       - django-cors-headers
       - djangorestframework-simplejwt
+      - dj-rest-auth
       - python-dotenv
       - psycopg2-binary
       - pillow
@@ -24,3 +26,5 @@ dependencies:
       - django-extensions
       - ipython
       - gunicorn
+      - pytest
+      - pytest-django
