@@ -17,6 +17,8 @@ from django.contrib.auth.models import User
 from .serializers import UsuarioReadSerializer
 from .permissions import IsSuperAdmin
 from django.shortcuts import get_object_or_404
+from rest_framework.generics import CreateAPIView
+from .serializers import UsuarioCreateSerializer
 
 
 class LoginInternoView(APIView):
@@ -215,4 +217,10 @@ class ArchivoViewSet(viewsets.ModelViewSet):
 class ListarUsuariosView(ListAPIView):
     queryset = User.objects.all().order_by('id')
     serializer_class = UsuarioReadSerializer
+    permission_classes = [IsAuthenticated, IsSuperAdmin]
+
+class CrearUsuarioView(CreateAPIView):
+    queryset = User.objects.all()
+    serializer_class = UsuarioCreateSerializer
+    # Reutilizamos la misma clase de Custom Permission (IsSuperAdmin) y exigimos autenticación
     permission_classes = [IsAuthenticated, IsSuperAdmin]
