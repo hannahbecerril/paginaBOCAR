@@ -16,6 +16,7 @@ from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth.models import User
 from .serializers import UsuarioReadSerializer
 from .permissions import IsSuperAdmin
+from django.shortcuts import get_object_or_404
 
 
 class LoginInternoView(APIView):
@@ -163,6 +164,46 @@ class LoginProveedorView(APIView):
                 {"error": "Usuario o contraseña incorrectos."}, 
                 status=status.HTTP_401_UNAUTHORIZED
             )
+
+class CambiarEstadoUsuarioView(APIView):
+    # Solo usuarios autenticados y SuperAdmins pueden hacer esto
+    permission_classes = [IsAuthenticated, IsSuperAdmin]
+
+    def put(self, request, pk):
+        # Obtener el usuario por su Primary Key (ID) o devolver un error 404
+        user = get_object_or_404(User, pk=pk)
+
+        # Obtener el nuevo estado (true o false) desde el cuerpo de la petición (JSON)
+        nuevo_estado = request.data.get('is_active')
+
+        # Asegurarse de que enviaron el campo
+        if nuevo_estado is None:
+            return Response(
+                {"error": "Se requiere el campo 'is_active' en el cuerpo de la petición."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Convertir a booleano de forma segura por si llega como string
+        if isinstance(nuevo_estado, str):
+            nuevo_estado = nuevo_estado.lower() in ['true', '1', 't', 'y', 'yes']
+        else:
+            nuevo_estado = bool(nuevo_estado)
+
+        # Aplicar la baja lógica (o reactivación)
+        user.is_active = nuevo_estado
+        user.save()
+
+        # Respuesta informativa
+        accion = "reactivado" if nuevo_estado else "dado de baja (suspendido)"
+
+        return Response({
+            "mensaje": f"El usuario '{user.username}' ha sido {accion} exitosamente.",
+            "usuario": {
+                "id": user.id,
+                "username": user.username,
+                "is_active": user.is_active
+            }
+        }, status=status.HTTP_200_OK)
         
 def hola(request):
     return JsonResponse({"mensaje": "Hola desde Django 🚀"})
