@@ -2,7 +2,6 @@ import hmac
 import hashlib
 import json
 from django.conf import settings
-
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -12,6 +11,12 @@ from rest_framework import viewsets
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.http import JsonResponse
 from .serializers import ArchivoSerializer
+from rest_framework.generics import ListAPIView
+from rest_framework.permissions import IsAuthenticated
+from django.contrib.auth.models import User
+from .serializers import UsuarioReadSerializer
+from .permissions import IsSuperAdmin
+
 
 class LoginInternoView(APIView):
     def post(self, request):
@@ -126,7 +131,7 @@ class LoginProveedorView(APIView):
             grupos_usuario = list(user.groups.values_list('name', flat=True))
             
             # Verificar que pertenezca al grupo de Proveedores (Ajusta el nombre según tu BD)
-            if 'Proveedor' not in grupos_usuario:
+            if 'Supplier' not in grupos_usuario:
                 return Response(
                     {"error": "Acceso denegado. Portal exclusivo para proveedores."}, 
                     status=status.HTTP_403_FORBIDDEN
@@ -165,3 +170,8 @@ def hola(request):
 class ArchivoViewSet(viewsets.ModelViewSet):
     queryset = Archivo.objects.all()
     serializer_class = ArchivoSerializer
+
+class ListarUsuariosView(ListAPIView):
+    queryset = User.objects.all().order_by('id')
+    serializer_class = UsuarioReadSerializer
+    permission_classes = [IsAuthenticated, IsSuperAdmin]
