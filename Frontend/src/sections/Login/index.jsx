@@ -1,7 +1,7 @@
 // sections/auth/Login.jsx
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LogIn, Building, Users, Shield, ArrowRight } from 'lucide-react';
+import { Building, Users, Shield, ArrowRight } from 'lucide-react'; // Added Shield import
 import Cookies from 'js-cookie';
 import CryptoJS from 'crypto-js';
 import Button from '../../components/ui/Button';
@@ -11,7 +11,7 @@ export default function Login() {
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [tipoUsuario, setTipoUsuario] = useState('interno');
+  const [userType, setUserType] = useState('internal');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -21,15 +21,15 @@ export default function Login() {
     setLoading(true);
 
     try {
-      let url = 'http://127.0.0.1:8000/api/auth/login/interno/';
+      let url = 'http://127.0.0.1:8000/api/auth/login/internal/';
       let headers = { 'Content-Type': 'application/json' };
 
       const payloadObj = { password, username };
       const bodyString = JSON.stringify(payloadObj);
 
-      if (tipoUsuario === 'proveedor') {
-        url = 'http://127.0.0.1:8000/api/auth/login/proveedor/';
-        const secretKey = 'clave_secreta';
+      if (userType === 'supplier') {
+        url = 'http://127.0.0.1:8000/api/auth/login/supplier/';
+        const secretKey = 'secret_key';
         const hash = CryptoJS.HmacSHA256(bodyString, secretKey).toString(CryptoJS.enc.Hex);
         headers['X-Signature'] = hash;
       }
@@ -42,12 +42,12 @@ export default function Login() {
 
       const data = await response.json();
 
-      if (!response.ok) throw new Error(data.error || 'Error de autenticación');
+      if (!response.ok) throw new Error(data.error || 'Authentication error');
 
       Cookies.set('access_token', data.access, { expires: 1, sameSite: 'strict' });
       Cookies.set('refresh_token', data.refresh, { expires: 7, sameSite: 'strict' });
-      localStorage.setItem('usuario', JSON.stringify(data.usuario));
-      navigate('/industrializacion/rfqform');
+      localStorage.setItem('user', JSON.stringify(data.usuario));
+      navigate('/industrialization/rfqform');
 
     } catch (err) {
       setError(err.message);
@@ -57,11 +57,9 @@ export default function Login() {
   };
 
   return (
-    <div className="flex h-screen bg-gray-50">
-
+    <div className="flex h-screen w-full">
       {/* LEFT PANEL - Branding */}
-      <div className="hidden md:flex w-[42%] relative flex-col justify-between p-10 bg-[#0f2742] overflow-hidden">
-
+      <div className="hidden md:flex md:w-2/5 lg:w-[42%] relative flex-col justify-between p-10 overflow-hidden" style={{ backgroundColor: '#0f2742' }}>
         {/* Background Pattern */}
         <div className="absolute inset-0 opacity-20"
           style={{
@@ -84,7 +82,7 @@ export default function Login() {
               </div>
             </div>
             <div>
-              <p className="text-xs font-semibold tracking-wider">CHATIZA CORP</p>
+              <p className="text-xs font-semibold tracking-wider text-white">CHATIZA CORP</p>
               <p className="text-[10px] text-white/50">Industrial Management</p>
             </div>
           </div>
@@ -93,31 +91,52 @@ export default function Login() {
         {/* Bottom Content */}
         <div className="relative z-10">
           <h2 className="text-white text-2xl font-semibold leading-snug mb-4">
-            Sistema de Gestión Industrial y Proveedores
+            Industrial & Supplier Management System
           </h2>
           <p className="text-white/60 text-sm leading-relaxed">
-            Plataforma centralizada para la gestión de solicitudes, cotizaciones y seguimiento de proveedores.
+            Centralized platform for managing requests, quotations, and supplier tracking.
           </p>
+
+          {/* Features List */}
+          <div className="mt-8 space-y-3">
+            <div className="flex items-center gap-3 text-white/70 text-sm">
+              <div className="w-5 h-5 bg-white/10 flex items-center justify-center">
+                <Shield size={12} className="text-white/70" />
+              </div>
+              <span>Secure document management</span>
+            </div>
+            <div className="flex items-center gap-3 text-white/70 text-sm">
+              <div className="w-5 h-5 bg-white/10 flex items-center justify-center">
+                <Users size={12} className="text-white/70" />
+              </div>
+              <span>Supplier collaboration</span>
+            </div>
+            <div className="flex items-center gap-3 text-white/70 text-sm">
+              <div className="w-5 h-5 bg-white/10 flex items-center justify-center">
+                <Building size={12} className="text-white/70" />
+              </div>
+              <span>Quote management</span>
+            </div>
+          </div>
         </div>
       </div>
 
       {/* RIGHT PANEL - Login Form */}
-      <div className="flex-1 flex items-center justify-center px-6">
-        <div className="w-full max-w-md">
-
+      <div className="flex-1 w-full flex items-center justify-center px-6 py-8 overflow-y-auto">
+        <div className="md:w-65% mx-auto w-90%">
           {/* Header */}
-          <div className="mb-8">
-            <h1 className="text-2xl font-semibold text-gray-900">
-              Iniciar Sesión
+          <div className="mb-8 text-center md:text-left">
+            <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>
+              Sign In
             </h1>
-            <p className="text-sm text-gray-500 mt-2">
-              Ingresa tus credenciales para acceder al sistema
+            <p className="text-sm mt-2" style={{ color: 'var(--text-secondary)' }}>
+              Enter your credentials to access the system
             </p>
           </div>
 
           {/* Error Message */}
           {error && (
-            <div className="mb-6 text-sm text-red-600 bg-red-50 border border-red-200 px-4 py-3">
+            <div className="mb-6 text-sm px-4 py-3 border" style={{ color: 'var(--brand-danger)', backgroundColor: 'rgba(239, 68, 68, 0.1)', borderColor: 'var(--brand-danger)' }}>
               <div className="flex items-center gap-2">
                 <span className="font-medium">Error:</span>
                 <span>{error}</span>
@@ -125,20 +144,19 @@ export default function Login() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit}>
-
+          <form onSubmit={handleSubmit} className="space-y-4">
             {/* Username Field */}
             <Input
-              label="Usuario"
+              label="Username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="Introduce tu usuario"
+              placeholder="Enter your username"
               required
             />
 
             {/* Password Field */}
             <Input
-              label="Contraseña"
+              label="Password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -147,42 +165,42 @@ export default function Login() {
             />
 
             {/* User Type Selection */}
-            <div className="mb-6">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-3">
-                Tipo de usuario
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text-tertiary)' }}>
+                User Type
               </p>
 
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
-                  onClick={() => setTipoUsuario("interno")}
+                  onClick={() => setUserType("internal")}
                   className={`
-                    px-4 py-3 text-sm font-medium border transition-all
+                    px-4 py-3 text-sm font-medium border transition-all duration-200
                     flex items-center justify-center gap-2
-                    ${tipoUsuario === "interno"
+                    ${userType === "internal"
                       ? "border-blue-500 bg-blue-50 text-blue-700"
                       : "border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50"
                     }
                   `}
                 >
                   <Users size={16} />
-                  Personal interno
+                  Internal Staff
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => setTipoUsuario("proveedor")}
+                  onClick={() => setUserType("supplier")}
                   className={`
-                    px-4 py-3 text-sm font-medium border transition-all
+                    px-4 py-3 text-sm font-medium border transition-all duration-200
                     flex items-center justify-center gap-2
-                    ${tipoUsuario === "proveedor"
+                    ${userType === "supplier"
                       ? "border-blue-500 bg-blue-50 text-blue-700"
                       : "border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50"
                     }
                   `}
                 >
                   <Building size={16} />
-                  Proveedores
+                  Suppliers
                 </button>
               </div>
             </div>
@@ -193,30 +211,28 @@ export default function Login() {
               variant="primary"
               size="lg"
               disabled={loading}
-              className="w-full"
+              className="w-full mt-6"
             >
               {loading ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white border-t-transparent animate-spin" />
-                  Cargando...
+                  Loading...
                 </>
               ) : (
                 <>
-                  Acceder al Sistema
+                  Access System
                   <ArrowRight size={16} />
                 </>
               )}
             </Button>
-
           </form>
 
           {/* Footer */}
-          <div className="mt-6 pt-6 border-t border-gray-200">
-            <p className="text-xs text-gray-400 text-center">
-              Al acceder, aceptas los términos de uso y políticas de privacidad
+          <div className="mt-8 pt-6 border-t" style={{ borderColor: 'var(--border-default)' }}>
+            <p className="text-xs text-center" style={{ color: 'var(--text-tertiary)' }}>
+              By accessing, you accept the terms of use and privacy policies
             </p>
           </div>
-
         </div>
       </div>
     </div>

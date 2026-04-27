@@ -9,20 +9,21 @@ const Input = ({
     placeholder,
     required = false,
     variant = "default", // default | search | textarea | select
-    options = [], // for select variant
+    options = [],
     className = "",
-    rows = 4, // for textarea variant
+    rows = 4,
 }) => {
     const baseStyles = `
-        w-full border border-gray-200 bg-gray-50
-        px-3 py-2 text-sm text-gray-800
-        placeholder:text-gray-400
-        focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20
-        transition-all outline-none
+        w-full border border-border-default bg-surface
+        px-3 py-2 text-sm text-text-primary
+        placeholder:text-text-tertiary
+        focus:border-ring focus:ring-2 focus:ring-ring/20
+        transition-all duration-fast outline-none
     `;
 
     const labelStyles = `
-        block text-[11px] font-semibold tracking-wider uppercase text-gray-400 mb-1.5
+        block text-[11px] font-semibold tracking-wider uppercase mb-1.5
+        text-text-tertiary
     `;
 
     // SEARCH VARIANT
@@ -31,7 +32,7 @@ const Input = ({
             <div className={className}>
                 {label && <label className={labelStyles}>{label}</label>}
                 <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2" size={16} style={{ color: 'var(--text-tertiary)' }} />
                     <input
                         type="text"
                         value={value}
@@ -42,7 +43,10 @@ const Input = ({
                     {value && (
                         <button
                             onClick={() => onChange({ target: { value: "" } })}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                            className="absolute right-3 top-1/2 -translate-y-1/2 transition-colors duration-fast"
+                            style={{ color: 'var(--text-tertiary)' }}
+                            onMouseEnter={(e) => e.currentTarget.style.color = 'var(--text-primary)'}
+                            onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-tertiary)'}
                         >
                             <X size={14} />
                         </button>
@@ -80,7 +84,7 @@ const Input = ({
                     required={required}
                     className={`${baseStyles} cursor-pointer`}
                 >
-                    <option value="">Selecciona una opción</option>
+                    <option value="">Select an option</option>
                     {options.map((option) => (
                         <option key={option.value} value={option.value}>
                             {option.label}

@@ -10,16 +10,16 @@ const Button = ({
     const base = `
         inline-flex items-center justify-center gap-2
         border text-sm font-medium
-        transition-all
-        focus:outline-none focus:ring-2 focus:ring-blue-500/20
+        transition-all duration-fast
+        focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2
     `;
 
     const variants = {
-        primary: 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700',
-        outline: 'border-gray-200 text-gray-700 bg-white hover:bg-gray-50',
-        ghost: 'border-transparent text-gray-600 hover:bg-gray-100',
-        danger: 'bg-red-600 text-white border-red-600 hover:bg-red-700',
-        success: 'bg-green-600 text-white border-green-600 hover:bg-green-700',
+        primary: 'bg-brand-primary text-white border-brand-primary hover:bg-brand-primary-dark',
+        outline: 'border-border-default bg-surface text-text-primary hover:bg-surface-hover',
+        ghost: 'border-transparent text-text-secondary hover:bg-surface-hover',
+        danger: 'bg-brand-danger text-white border-brand-danger hover:bg-brand-danger/90',
+        success: 'bg-brand-success text-white border-brand-success hover:bg-brand-success/90',
     };
 
     const sizes = {

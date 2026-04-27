@@ -1,5 +1,6 @@
+// components/ui/Table.jsx
 import React, { useState, useMemo } from 'react';
-import Button from './button';
+import Button from './Button';
 
 const Table = ({
     columns,
@@ -8,7 +9,7 @@ const Table = ({
     filterable = true,
     onRowClick,
     actions,
-    emptyMessage = 'No hay datos disponibles',
+    emptyMessage = 'No data available',
 }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [filters, setFilters] = useState({});
@@ -101,16 +102,18 @@ const Table = ({
                         <div className="relative">
                             <input
                                 type="text"
-                                placeholder="Buscar..."
+                                placeholder="Search..."
                                 value={searchTerm}
                                 onChange={(e) => {
                                     setSearchTerm(e.target.value);
                                     setCurrentPage(1);
                                 }}
-                                className="w-full px-4 py-2 pl-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                className="w-full px-4 py-2 pl-10 border border-border-default focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
+                                style={{ backgroundColor: 'var(--surface)', color: 'var(--text-primary)' }}
                             />
                             <svg
-                                className="absolute left-3 top-2.5 h-5 w-5 text-gray-400"
+                                className="absolute left-3 top-2.5 h-5 w-5"
+                                style={{ color: 'var(--text-tertiary)' }}
                                 fill="none"
                                 stroke="currentColor"
                                 viewBox="0 0 24 24"
@@ -132,9 +135,10 @@ const Table = ({
                                     key={column.key}
                                     value={filters[column.key] || ''}
                                     onChange={(e) => handleFilterChange(column.key, e.target.value)}
-                                    className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className="px-3 py-2 border border-border-default focus:outline-none focus:ring-2 focus:ring-ring"
+                                    style={{ backgroundColor: 'var(--surface)', color: 'var(--text-primary)' }}
                                 >
-                                    <option value="">Todos {column.label}</option>
+                                    <option value="">All {column.label}</option>
                                     {getFilterOptions(column).map(option => (
                                         <option key={option} value={option}>
                                             {option}
@@ -144,7 +148,7 @@ const Table = ({
                             ))}
                             {(Object.keys(filters).length > 0 || searchTerm) && (
                                 <Button
-                                    variant="secondary"
+                                    variant="outline"
                                     size="sm"
                                     onClick={() => {
                                         setSearchTerm('');
@@ -152,7 +156,7 @@ const Table = ({
                                         setCurrentPage(1);
                                     }}
                                 >
-                                    Limpiar filtros
+                                    Clear filters
                                 </Button>
                             )}
                         </div>
@@ -161,44 +165,46 @@ const Table = ({
             )}
 
             {/* Table */}
-            <div className="overflow-x-auto border border-gray-200 rounded-lg">
-                <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-[#f9fafb]">
+            <div className="overflow-x-auto border border-border-default">
+                <table className="min-w-full divide-y" style={{ divideColor: 'var(--border-default)' }}>
+                    <thead style={{ backgroundColor: 'var(--background-tertiary)' }}>
                         <tr>
                             {columns.map((column) => (
                                 <th
                                     key={column.key}
                                     onClick={() => column.sortable && handleSort(column.key)}
-                                    className={`px-6 py-3 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider ${column.sortable ? 'cursor-pointer hover:bg-gray-100' : ''
+                                    className={`px-6 py-3 text-left text-[11px] font-semibold uppercase tracking-wider ${column.sortable ? 'cursor-pointer hover:bg-surface-hover' : ''
                                         }`}
+                                    style={{ color: 'var(--text-tertiary)' }}
                                 >
                                     <div className="flex items-center space-x-1">
                                         <span>{column.label}</span>
                                         {column.sortable && (
-                                            <span className="text-gray-400">
+                                            <span style={{ color: 'var(--text-tertiary)' }}>
                                                 {getSortIndicator(column.key)}
                                             </span>
                                         )}
                                     </div>
                                 </th>
                             ))}
-                            {actions && <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Acciones
+                            {actions && <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
+                                Actions
                             </th>}
                         </tr>
                     </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
+                    <tbody className="bg-surface divide-y" style={{ divideColor: 'var(--border-default)' }}>
                         {paginatedData.length > 0 ? (
                             paginatedData.map((row, index) => (
                                 <tr
                                     key={index}
                                     onClick={() => onRowClick && onRowClick(row)}
-                                    className={onRowClick ? 'cursor-pointer hover:bg-[#f9fafb]' : 'hover:bg-[#f9fafb]'}
+                                    className={onRowClick ? 'cursor-pointer hover:bg-surface-hover' : 'hover:bg-surface-hover'}
                                 >
                                     {columns.map((column) => (
                                         <td
                                             key={column.key}
-                                            className="px-5 py-3 whitespace-nowrap text-sm text-gray-900"
+                                            className="px-5 py-3 whitespace-nowrap text-sm"
+                                            style={{ color: 'var(--text-primary)' }}
                                         >
                                             {column.render ? column.render(row[column.key], row) : row[column.key]}
                                         </td>
@@ -214,7 +220,8 @@ const Table = ({
                             <tr>
                                 <td
                                     colSpan={columns.length + (actions ? 1 : 0)}
-                                    className="px-6 py-8 text-center text-sm text-gray-500"
+                                    className="px-6 py-8 text-center text-sm"
+                                    style={{ color: 'var(--text-tertiary)' }}
                                 >
                                     {emptyMessage}
                                 </td>
@@ -227,10 +234,10 @@ const Table = ({
             {/* Pagination */}
             {totalPages > 1 && (
                 <div className="flex items-center justify-between mt-4">
-                    <div className="text-sm text-gray-700">
-                        Mostrando {((currentPage - 1) * itemsPerPage) + 1} a{' '}
-                        {Math.min(currentPage * itemsPerPage, processedData.length)} de{' '}
-                        {processedData.length} resultados
+                    <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                        Showing {((currentPage - 1) * itemsPerPage) + 1} to{' '}
+                        {Math.min(currentPage * itemsPerPage, processedData.length)} of{' '}
+                        {processedData.length} results
                     </div>
                     <div className="flex space-x-2">
                         <Button
@@ -239,7 +246,7 @@ const Table = ({
                             onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                             disabled={currentPage === 1}
                         >
-                            Anterior
+                            Previous
                         </Button>
                         <Button
                             variant="outline"
@@ -247,7 +254,7 @@ const Table = ({
                             onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                             disabled={currentPage === totalPages}
                         >
-                            Siguiente
+                            Next
                         </Button>
                     </div>
                 </div>

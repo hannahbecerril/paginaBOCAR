@@ -6,15 +6,15 @@ import UploadCard from '../../components/ui/UploadCard';
 
 export default function RFQForm() {
     const [form, setForm] = useState({
-        nombre: '',
-        descripcion: '',
-        prioridad: ''
+        name: '',
+        description: '',
+        priority: ''
     });
 
     const [uploadedFiles, setUploadedFiles] = useState({
-        documentacion: null,
-        presentacion: null,
-        modelo3d: null
+        documentation: null,
+        presentation: null,
+        model3d: null
     });
 
     const handleChange = (key, value) => {
@@ -23,7 +23,7 @@ export default function RFQForm() {
 
     const handleFileUpload = (type, file) => {
         setUploadedFiles(prev => ({ ...prev, [type]: file }));
-        console.log(`Archivo subido para ${type}:`, file);
+        console.log(`File uploaded for ${type}:`, file);
     };
 
     const handleSubmit = () => {
@@ -32,67 +32,62 @@ export default function RFQForm() {
             files: uploadedFiles
         };
         console.log('RFQ DATA:', completeData);
-        alert('RFQ enviado correctamente');
+        alert('RFQ sent successfully');
     };
 
     const priorityOptions = [
-        { value: 'Alta', label: 'Alta' },
-        { value: 'Media', label: 'Media' },
-        { value: 'Baja', label: 'Baja' }
+        { value: 'High', label: 'High' },
+        { value: 'Medium', label: 'Medium' },
+        { value: 'Low', label: 'Low' }
     ];
 
     return (
-        <div className="min-h-screen bg-gray-50">
+        <div className="min-h-screen" style={{ backgroundColor: 'var(--background-secondary)' }}>
             <div className="max-w-6xl mx-auto px-6 py-8">
 
                 {/* HEADER */}
                 <div className="mb-6">
-                    <h1 className="text-xl font-semibold text-gray-900">
-                        Crear RFQ
+                    <h1 className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>
+                        Create RFQ
                     </h1>
-                    <p className="text-sm text-gray-500">
-                        Solicitud de cotización para proveedores
+                    <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                        Request for Quotation for suppliers
                     </p>
                 </div>
 
                 {/* CARD */}
-                <div className="bg-white border border-gray-200 p-6 mb-6">
-
-                    <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4">
-                        Información del proyecto
+                <div className="bg-surface border border-border-default p-6 mb-6">
+                    <h2 className="text-xs font-semibold uppercase tracking-wider mb-4" style={{ color: 'var(--text-tertiary)' }}>
+                        Project Information
                     </h2>
 
-                    {/* Row */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                        {/* Nombre */}
                         <div className="md:col-span-2">
                             <Input
-                                label="Nombre del Proyecto"
-                                placeholder="Ej: Proyecto Alpha 2024"
-                                value={form.nombre}
-                                onChange={(e) => handleChange('nombre', e.target.value)}
+                                label="Project Name"
+                                placeholder="E.g., Alpha Project 2024"
+                                value={form.name}
+                                onChange={(e) => handleChange('name', e.target.value)}
                             />
                         </div>
 
-                        {/* Prioridad */}
                         <div>
                             <Input
-                                label="Prioridad"
+                                label="Priority"
                                 variant="select"
-                                value={form.prioridad}
-                                onChange={(e) => handleChange('prioridad', e.target.value)}
+                                value={form.priority}
+                                onChange={(e) => handleChange('priority', e.target.value)}
                                 options={priorityOptions}
                             />
                         </div>
                     </div>
 
-                    {/* Descripción */}
                     <Input
-                        label="Descripción"
+                        label="Description"
                         variant="textarea"
-                        placeholder="Descripción breve del proyecto..."
-                        value={form.descripcion}
-                        onChange={(e) => handleChange('descripcion', e.target.value)}
+                        placeholder="Brief project description..."
+                        value={form.description}
+                        onChange={(e) => handleChange('description', e.target.value)}
                         rows={4}
                     />
                 </div>
@@ -100,36 +95,36 @@ export default function RFQForm() {
                 {/* UPLOADS */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                     <UploadCard
-                        title="Documentación"
+                        title="Documentation"
                         subtitle="PDF, DOC, DOCX"
                         acceptedFileTypes={['pdf', 'doc', 'docx']}
                         maxFileSize={10}
                         expectedFileType="document"
-                        onFileUpload={(file) => handleFileUpload('documentacion', file)}
+                        onFileUpload={(file) => handleFileUpload('documentation', file)}
                     />
                     <UploadCard
-                        title="Presentación"
+                        title="Presentation"
                         subtitle="PPT, PPTX, KEY"
                         acceptedFileTypes={['ppt', 'pptx', 'key']}
                         maxFileSize={15}
                         expectedFileType="presentation"
-                        onFileUpload={(file) => handleFileUpload('presentacion', file)}
+                        onFileUpload={(file) => handleFileUpload('presentation', file)}
                     />
                     <UploadCard
-                        title="Modelo 3D"
+                        title="3D Model"
                         subtitle="STEP, STL, OBJ, DWG"
                         acceptedFileTypes={['step', 'stl', 'obj', 'dwg']}
                         maxFileSize={50}
                         expectedFileType="3d"
                         multiple={false}
-                        onFileUpload={(file) => handleFileUpload('modelo3d', file)}
+                        onFileUpload={(file) => handleFileUpload('model3d', file)}
                     />
                 </div>
 
                 {/* ACTION */}
                 <div className="flex justify-end">
                     <Button onClick={handleSubmit} variant="primary">
-                        Enviar Solicitud
+                        Submit Request
                     </Button>
                 </div>
 

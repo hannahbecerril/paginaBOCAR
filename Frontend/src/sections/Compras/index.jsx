@@ -6,14 +6,14 @@ import Usuarios from './Usuarios';
 
 export default function ComprasDashboard() {
     const tabs = [
-        { label: 'Lista Proveedores', path: 'proveedores' },
-        { label: 'Usuarios', path: 'usuarios' },
+        { label: 'Suppliers List', path: 'proveedores' },
+        { label: 'Users', path: 'usuarios' },
     ];
 
     return (
-        <div className="min-h-screen bg-gray-50">
+        <div className="min-h-screen" style={{ backgroundColor: 'var(--background-secondary)' }}>
             <NavBar
-                module="Compras"
+                module="Procurement"
                 basePath="/compras"
                 tabs={tabs}
                 user={{ name: "Maria Garcia" }}
@@ -21,9 +21,7 @@ export default function ComprasDashboard() {
 
             <div className="p-6">
                 <Routes>
-                    {/* Default redirect - using relative path */}
                     <Route index element={<Navigate to="proveedores" replace />} />
-
                     <Route path="proveedores" element={<ListaProveedores />} />
                     <Route path="usuarios" element={<Usuarios />} />
                 </Routes>

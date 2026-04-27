@@ -34,7 +34,6 @@ export default function TableComponent({
     const filteredData = useMemo(() => {
         let result = data;
 
-        // Apply search
         if (search) {
             result = result.filter(row =>
                 Object.values(row).some(val =>
@@ -43,7 +42,6 @@ export default function TableComponent({
             );
         }
 
-        // Apply filters
         Object.keys(filters).forEach(key => {
             if (filters[key]) {
                 result = result.filter(row =>
@@ -101,11 +99,11 @@ export default function TableComponent({
     // 🔽 SORT ICON
     const SortIcon = ({ columnKey }) => {
         if (sortConfig.key !== columnKey) {
-            return <ChevronsUpDown size={12} className="text-gray-300" />;
+            return <ChevronsUpDown size={12} style={{ color: 'var(--text-tertiary)' }} />;
         }
         return sortConfig.direction === 'asc'
-            ? <ArrowUp size={12} className="text-gray-500" />
-            : <ArrowDown size={12} className="text-gray-500" />;
+            ? <ArrowUp size={12} style={{ color: 'var(--text-secondary)' }} />
+            : <ArrowDown size={12} style={{ color: 'var(--text-secondary)' }} />;
     };
 
     // 🎨 DEFAULT RENDERERS
@@ -114,24 +112,24 @@ export default function TableComponent({
             case 'person_name':
                 return (
                     <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-gray-100 flex items-center justify-center text-sm font-medium text-gray-900">
+                        <div className="w-8 h-8 bg-surface-hover flex items-center justify-center text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
                             {value?.charAt(0).toUpperCase()}
                         </div>
-                        <span className="text-sm font-medium text-gray-900">{value}</span>
+                        <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{value}</span>
                     </div>
                 );
 
             case 'file_name':
                 return (
-                    <div className="flex items-center gap-2 text-gray-700">
-                        <FileText size={16} className="text-gray-400" />
+                    <div className="flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
+                        <FileText size={16} style={{ color: 'var(--text-tertiary)' }} />
                         <span className="text-sm">{value}</span>
                     </div>
                 );
 
             case 'id':
                 return (
-                    <span className="font-mono text-xs text-gray-500 bg-gray-50 px-2 py-1">
+                    <span className="font-mono text-xs px-2 py-1" style={{ color: 'var(--text-secondary)', backgroundColor: 'var(--surface-hover)' }}>
                         {value}
                     </span>
                 );
@@ -140,20 +138,20 @@ export default function TableComponent({
                 return (
                     <div className="flex items-center gap-3">
                         <div className="flex-1 max-w-[100px]">
-                            <div className="h-1.5 bg-gray-100 overflow-hidden">
+                            <div className="h-1.5 bg-border-default overflow-hidden">
                                 <div
-                                    className="h-full bg-blue-500 transition-all duration-300"
+                                    className="h-full bg-brand-accent transition-all duration-300"
                                     style={{ width: `${value}%` }}
                                 />
                             </div>
                         </div>
-                        <span className="text-xs font-medium text-gray-600">{value}%</span>
+                        <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>{value}%</span>
                     </div>
                 );
 
             case 'time':
                 return (
-                    <div className="flex items-center gap-2 text-gray-500">
+                    <div className="flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
                         <Clock size={14} />
                         <span className="text-sm">{value}</span>
                     </div>
@@ -161,13 +159,13 @@ export default function TableComponent({
 
             case 'status':
                 const statusColors = {
-                    active: 'bg-green-50 text-green-700 border-green-200',
-                    pending: 'bg-yellow-50 text-yellow-700 border-yellow-200',
-                    completed: 'bg-blue-50 text-blue-700 border-blue-200',
-                    cancelled: 'bg-red-50 text-red-700 border-red-200',
-                    inactivo: 'bg-gray-50 text-gray-700 border-gray-200',
+                    active: 'bg-status-active/10 text-status-active border-status-active',
+                    pending: 'bg-status-pending/10 text-status-pending border-status-pending',
+                    completed: 'bg-status-completed/10 text-status-completed border-status-completed',
+                    cancelled: 'bg-status-cancelled/10 text-status-cancelled border-status-cancelled',
+                    inactive: 'bg-surface-disabled text-text-tertiary border-border-default',
                 };
-                const statusColor = statusColors[value?.toLowerCase()] || 'bg-gray-50 text-gray-700 border-gray-200';
+                const statusColor = statusColors[value?.toLowerCase()] || 'bg-surface-hover text-text-secondary border-border-default';
                 return (
                     <span className={`inline-flex items-center px-2.5 py-0.5 text-xs font-medium border ${statusColor}`}>
                         {value}
@@ -176,11 +174,11 @@ export default function TableComponent({
 
             case 'priority':
                 const priorityColors = {
-                    high: 'bg-red-50 text-red-700 border-red-200',
-                    medium: 'bg-orange-50 text-orange-700 border-orange-200',
-                    low: 'bg-green-50 text-green-700 border-green-200',
+                    high: 'bg-priority-high/10 text-priority-high border-priority-high',
+                    medium: 'bg-priority-medium/10 text-priority-medium border-priority-medium',
+                    low: 'bg-priority-low/10 text-priority-low border-priority-low',
                 };
-                const priorityColor = priorityColors[value?.toLowerCase()] || 'bg-gray-50 text-gray-700 border-gray-200';
+                const priorityColor = priorityColors[value?.toLowerCase()] || 'bg-surface-hover text-text-secondary border-border-default';
                 return (
                     <span className={`inline-flex items-center px-2.5 py-0.5 text-xs font-medium border ${priorityColor}`}>
                         {value}
@@ -188,38 +186,34 @@ export default function TableComponent({
                 );
 
             default:
-                return <span className="text-sm text-gray-700">{value}</span>;
+                return <span className="text-sm" style={{ color: 'var(--text-primary)' }}>{value}</span>;
         }
     };
 
-    // Get unique filter options for each column
     const getFilterOptions = (columnKey) => {
         const uniqueValues = [...new Set(data.map(item => item[columnKey]))];
         return uniqueValues.filter(v => v != null);
     };
 
     return (
-        <div className="min-h-screen bg-gray-50">
+        <div className="min-h-screen" style={{ backgroundColor: 'var(--background-secondary)' }}>
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
                 {/* HEADER */}
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
                     <div>
-                        <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">{title}</h1>
+                        <h1 className="text-2xl font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>{title}</h1>
                         {subtitle && (
-                            <p className="text-sm text-gray-500 mt-1">{subtitle}</p>
+                            <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>{subtitle}</p>
                         )}
                     </div>
 
                     <div className="flex gap-2">
-                        <Button
-                            variant="outline"
-                            onClick={() => setShowFilters(!showFilters)}
-                        >
+                        <Button variant="outline" onClick={() => setShowFilters(!showFilters)}>
                             <Filter size={16} />
-                            Filtrar
+                            Filter
                             {Object.keys(filters).length > 0 && (
-                                <span className="ml-1 px-1.5 py-0.5 bg-blue-500 text-white text-xs">
+                                <span className="ml-1 px-1.5 py-0.5 text-white text-xs" style={{ backgroundColor: 'var(--brand-accent)' }}>
                                     {Object.keys(filters).length}
                                 </span>
                             )}
@@ -228,17 +222,17 @@ export default function TableComponent({
                         {onAdd && (
                             <Button onClick={onAdd}>
                                 <Plus size={16} />
-                                Agregar
+                                Add
                             </Button>
                         )}
                     </div>
                 </div>
 
-                {/* SEARCH BAR - Using Input component */}
+                {/* SEARCH BAR */}
                 <div className="mb-6">
                     <Input
                         variant="search"
-                        placeholder="Buscar..."
+                        placeholder="Search..."
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                     />
@@ -246,14 +240,17 @@ export default function TableComponent({
 
                 {/* FILTERS PANEL */}
                 {showFilters && (
-                    <div className="mb-6 p-4 bg-white border border-gray-200">
+                    <div className="mb-6 p-4 bg-surface border border-border-default">
                         <div className="flex items-center justify-between mb-3">
-                            <h3 className="text-sm font-medium text-gray-700">Filtros</h3>
+                            <h3 className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Filters</h3>
                             <button
                                 onClick={clearAllFilters}
-                                className="text-xs text-gray-500 hover:text-gray-700"
+                                className="text-xs transition-colors duration-fast"
+                                style={{ color: 'var(--text-tertiary)' }}
+                                onMouseEnter={(e) => e.currentTarget.style.color = 'var(--text-primary)'}
+                                onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-tertiary)'}
                             >
-                                Limpiar todos
+                                Clear all
                             </button>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -262,15 +259,16 @@ export default function TableComponent({
                                 const options = getFilterOptions(col.key);
                                 return (
                                     <div key={col.key}>
-                                        <label className="block text-xs font-medium text-gray-600 mb-1">
+                                        <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>
                                             {col.label}
                                         </label>
                                         <select
                                             value={filters[col.key] || ''}
                                             onChange={(e) => handleFilter(col.key, e.target.value)}
-                                            className="w-full px-3 py-1.5 text-sm border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                                            className="w-full px-3 py-1.5 text-sm border border-border-default focus:outline-none focus:ring-2 focus:ring-ring bg-surface"
+                                            style={{ color: 'var(--text-primary)' }}
                                         >
-                                            <option value="">Todos</option>
+                                            <option value="">All</option>
                                             {options.map(opt => (
                                                 <option key={opt} value={opt}>
                                                     {opt}
@@ -285,11 +283,11 @@ export default function TableComponent({
                 )}
 
                 {/* TABLE */}
-                <div className="bg-white border border-gray-200 overflow-hidden">
+                <div className="bg-surface border border-border-default overflow-hidden">
                     <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-gray-200">
+                        <table className="min-w-full divide-y" style={{ divideColor: 'var(--border-default)' }}>
                             {/* HEAD */}
-                            <thead className="bg-gray-50">
+                            <thead style={{ backgroundColor: 'var(--background-tertiary)' }}>
                                 <tr>
                                     {columns.map(col => (
                                         <th
@@ -297,9 +295,9 @@ export default function TableComponent({
                                             onClick={() => col.sortable && handleSort(col.key)}
                                             className={`
                                                 px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider
-                                                text-gray-500
-                                                ${col.sortable ? 'cursor-pointer hover:text-gray-700 transition-colors' : ''}
+                                                ${col.sortable ? 'cursor-pointer transition-colors hover:text-text-primary' : ''}
                                             `}
+                                            style={{ color: 'var(--text-tertiary)' }}
                                         >
                                             <div className="flex items-center gap-1.5">
                                                 {col.label}
@@ -307,26 +305,27 @@ export default function TableComponent({
                                             </div>
                                         </th>
                                     ))}
-                                    <th className="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">
-                                        Acciones
+                                    <th className="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
+                                        Actions
                                     </th>
                                 </tr>
                             </thead>
 
                             {/* BODY */}
-                            <tbody className="divide-y divide-gray-100">
+                            <tbody className="divide-y" style={{ divideColor: 'var(--border-light)' }}>
                                 {sortedData.length === 0 ? (
                                     <tr>
                                         <td
                                             colSpan={columns.length + 1}
-                                            className="px-6 py-12 text-center text-sm text-gray-400"
+                                            className="px-6 py-12 text-center text-sm"
+                                            style={{ color: 'var(--text-tertiary)' }}
                                         >
-                                            No hay resultados
+                                            No results found
                                         </td>
                                     </tr>
                                 ) : (
                                     sortedData.map((row, i) => (
-                                        <tr key={i} className="hover:bg-gray-50 transition-colors duration-150">
+                                        <tr key={i} className="transition-colors duration-150 hover:bg-surface-hover">
                                             {columns.map(col => (
                                                 <td key={col.key} className="px-6 py-4 whitespace-nowrap text-sm">
                                                     {col.render
@@ -340,8 +339,9 @@ export default function TableComponent({
                                                     {onEdit && (
                                                         <button
                                                             onClick={() => onEdit(row)}
-                                                            className="p-2 text-gray-400 hover:text-blue-600 transition-colors hover:bg-blue-50"
-                                                            title="Editar"
+                                                            className="p-2 transition-colors rounded-none hover:text-brand-accent hover:bg-brand-accent/10"
+                                                            style={{ color: 'var(--text-tertiary)' }}
+                                                            title="Edit"
                                                         >
                                                             <Pencil size={16} />
                                                         </button>
@@ -349,8 +349,9 @@ export default function TableComponent({
                                                     {onDelete && (
                                                         <button
                                                             onClick={() => onDelete(row)}
-                                                            className="p-2 text-gray-400 hover:text-red-600 transition-colors hover:bg-red-50"
-                                                            title="Eliminar"
+                                                            className="p-2 transition-colors rounded-none hover:text-brand-danger hover:bg-brand-danger/10"
+                                                            style={{ color: 'var(--text-tertiary)' }}
+                                                            title="Delete"
                                                         >
                                                             <Trash2 size={16} />
                                                         </button>
@@ -368,8 +369,8 @@ export default function TableComponent({
                 {/* FOOTER */}
                 {sortedData.length > 0 && (
                     <div className="mt-4 text-center">
-                        <p className="text-xs text-gray-400">
-                            Mostrando {sortedData.length} de {data.length} registros
+                        <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                            Showing {sortedData.length} of {data.length} records
                         </p>
                     </div>
                 )}

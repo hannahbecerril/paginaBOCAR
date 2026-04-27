@@ -7,13 +7,13 @@ import Usuarios from './Usuarios';
 export default function IndustrializacionDashboard() {
     const tabs = [
         { label: 'RFQ Form', path: 'rfqform' },
-        { label: 'Usuarios', path: 'usuarios' },
+        { label: 'Users', path: 'usuarios' },
     ];
 
     return (
-        <div className="bg-gray-50">
+        <div style={{ backgroundColor: 'var(--background-secondary)' }}>
             <NavBar
-                module="Industrialización"
+                module="Industrialization"
                 basePath="/industrializacion"
                 tabs={tabs}
                 user={{ name: "Maria Garcia" }}
@@ -21,9 +21,7 @@ export default function IndustrializacionDashboard() {
 
             <div className="p-6">
                 <Routes>
-                    {/* Default redirect - using relative path */}
                     <Route index element={<Navigate to="rfqform" replace />} />
-
                     <Route path="rfqform" element={<RFQForm />} />
                     <Route path="usuarios" element={<Usuarios />} />
                 </Routes>

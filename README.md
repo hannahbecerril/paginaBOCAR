@@ -63,9 +63,28 @@ conda activate tc3005b-bocar
 ---
 
 ## Ejecución del backend
-
 ```bash
 cd backend
+```
+
+Crear instancia con conda
+```bash
+conda create -n bocar_env python=3.11
+# Activarla:
+conda activate bocar_env
+```
+
+Instalar django
+```bash
+pip install django
+pip install django-cors-headers
+pip install djangorestframework
+pip install djangorestframework-simplejwt
+pip install dj-rest-auth
+
+```
+Ejecuta las migraciones
+```bash
 python manage.py migrate
 python manage.py runserver
 ```

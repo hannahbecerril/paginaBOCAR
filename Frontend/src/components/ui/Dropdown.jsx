@@ -22,11 +22,7 @@ export default function Dropdown({ trigger, children }) {
             </div>
 
             {open && (
-                <div className="
-                    absolute right-0 mt-2 w-48
-                    bg-white border border-gray-200 rounded-lg shadow-sm
-                    py-1 z-50
-                ">
+                <div className="absolute right-0 mt-2 w-48 bg-surface border border-border-default py-1 z-dropdown">
                     {children}
                 </div>
             )}

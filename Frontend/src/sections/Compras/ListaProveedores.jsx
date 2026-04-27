@@ -1,57 +1,57 @@
 // sections/Compras/ListaProveedores.jsx
 import TableComponent from '../../components/layout/TableComponent';
 
-export default function ListaProveedores() {
-    const proveedores = [
+export default function SuppliersList() {
+    const suppliers = [
         {
             id: 1,
-            nombre: 'Proveedor A',
-            correo: 'proveedorA@empresa.com',
-            categoria: 'Plasticos',
-            compras: 120,
-            estatus: 'active' // Changed from 'activo' to match statusColors
+            name: 'Supplier A',
+            email: 'supplierA@company.com',
+            category: 'Plastics',
+            purchases: 120,
+            status: 'active'
         },
         {
             id: 2,
-            nombre: 'Proveedor B',
-            correo: 'proveedorB@empresa.com',
-            categoria: 'Electrónicos',
-            compras: 85,
-            estatus: 'active'
+            name: 'Supplier B',
+            email: 'supplierB@company.com',
+            category: 'Electronics',
+            purchases: 85,
+            status: 'active'
         },
         {
             id: 3,
-            nombre: 'Proveedor C',
-            correo: 'proveedorC@empresa.com',
-            categoria: 'Plasticos',
-            compras: 0,
-            estatus: 'inactive' // Changed from 'inactivo' to match statusColors
+            name: 'Supplier C',
+            email: 'supplierC@company.com',
+            category: 'Plastics',
+            purchases: 0,
+            status: 'inactive'
         },
         {
             id: 4,
-            nombre: 'Proveedor D',
-            correo: 'proveedorD@empresa.com',
-            categoria: 'Metalicos',
-            compras: 150,
-            estatus: 'active'
+            name: 'Supplier D',
+            email: 'supplierD@company.com',
+            category: 'Metals',
+            purchases: 150,
+            status: 'active'
         },
     ];
 
     const columns = [
-        { key: 'nombre', label: 'Nombre', type: 'person_name', sortable: true, filterable: true },
-        { key: 'correo', label: 'Correo', type: 'file_name', sortable: true, filterable: true },
-        { key: 'categoria', label: 'Categoría', type: 'badge', sortable: true, filterable: true },
-        { key: 'compras', label: 'Compras', sortable: true, filterable: true },
-        { key: 'estatus', label: 'Estatus', type: 'status', sortable: true, filterable: true },
+        { key: 'name', label: 'Name', type: 'person_name', sortable: true, filterable: true },
+        { key: 'email', label: 'Email', type: 'file_name', sortable: true, filterable: true },
+        { key: 'category', label: 'Category', type: 'badge', sortable: true, filterable: true },
+        { key: 'purchases', label: 'Purchases', sortable: true, filterable: true },
+        { key: 'status', label: 'Status', type: 'status', sortable: true, filterable: true },
     ];
 
     return (
         <TableComponent
-            title="Gestión de Proveedores"
-            subtitle="Administra proveedores del sistema"
-            data={proveedores}
+            title="Supplier Management"
+            subtitle="Manage system suppliers"
+            data={suppliers}
             columns={columns}
-            onAdd={() => alert('Agregar proveedor')}
+            onAdd={() => alert('Add supplier')}
             onEdit={(row) => console.log('Edit', row)}
             onDelete={(row) => console.log('Delete', row)}
         />

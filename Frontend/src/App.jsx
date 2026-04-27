@@ -1,25 +1,24 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import Login from './components/Login';
-import './App.css';
-
-// Un Dashboard temporal para que veas que sí entraste
-const Dashboard = () => (
-  <div style={{ padding: '50px', textAlign: 'center' }}>
-    <h1>✅ ¡Bienvenido al Sistema!</h1>
-    <p>Has iniciado sesión correctamente.</p>
-    <button onClick={() => window.location.href = '/'}>Cerrar Sesión</button>
-  </div>
-);
+// src/App.jsx
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import Login from './sections/Login';
+import ComprasDashboard from './sections/Compras';
+import IndustrializacionDashboard from './sections/Industrializacion';
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Ruta principal: Login */}
-        <Route path="/" element={<Login />} />
-        
-        {/* Ruta a la que vas después de entrar */}
-        <Route path="/dashboard" element={<Dashboard />} />
+        {/* Login */}
+        <Route path="/login" element={<Login />} />
+
+        {/* Compras module - IMPORTANT: Add /* to enable nested routes */}
+        <Route path="/compras/*" element={<ComprasDashboard />} />
+
+        {/* Industrializacion module - IMPORTANT: Add /* to enable nested routes */}
+        <Route path="/industrializacion/*" element={<IndustrializacionDashboard />} />
+
+        {/* Fallback */}
+        <Route path="*" element={<Navigate to="/login" />} />
       </Routes>
     </BrowserRouter>
   );

@@ -14,13 +14,13 @@ export default function NavBar({ module, basePath, tabs, user }) {
     };
 
     return (
-        <nav className="bg-white border-b border-gray-200">
+        <nav className="bg-surface border-b border-border-default">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="flex justify-between h-16">
                     {/* Left section */}
                     <div className="flex items-center">
                         <div className="flex-shrink-0 flex items-center">
-                            <div className="w-8 h-8 bg-gray-900 flex items-center justify-center">
+                            <div className="w-8 h-8 bg-brand-primary flex items-center justify-center">
                                 <div className="grid grid-cols-2 gap-[2px]">
                                     <div className="w-2 h-2 bg-white" />
                                     <div className="w-2 h-2 bg-white" />
@@ -28,7 +28,7 @@ export default function NavBar({ module, basePath, tabs, user }) {
                                     <div className="w-2 h-2 bg-white" />
                                 </div>
                             </div>
-                            <span className="ml-3 text-sm font-semibold text-gray-900">
+                            <span className="ml-3 text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
                                 {module}
                             </span>
                         </div>
@@ -40,10 +40,10 @@ export default function NavBar({ module, basePath, tabs, user }) {
                                     key={tab.path}
                                     to={`${basePath}/${tab.path}`}
                                     className={({ isActive }) => `
-                                        px-3 py-2 text-sm font-medium
+                                        px-3 py-2 text-sm font-medium transition-colors duration-fast
                                         ${isActive
-                                            ? 'text-blue-600 border-b-2 border-blue-600'
-                                            : 'text-gray-600 hover:text-gray-900 hover:border-b-2 hover:border-gray-300'
+                                            ? 'text-brand-accent border-b-2 border-brand-accent'
+                                            : 'text-text-secondary hover:text-text-primary hover:border-b-2 hover:border-border-dark'
                                         }
                                     `}
                                 >
@@ -58,32 +58,37 @@ export default function NavBar({ module, basePath, tabs, user }) {
                         <div className="relative">
                             <button
                                 onClick={() => setShowUserMenu(!showUserMenu)}
-                                className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                className="flex items-center gap-2 px-3 py-2 text-sm transition-colors duration-fast"
+                                style={{ color: 'var(--text-secondary)' }}
+                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--surface-hover)'}
+                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                             >
-                                <div className="w-6 h-6 bg-gray-200 flex items-center justify-center">
-                                    <User size={14} className="text-gray-600" />
+                                <div className="w-6 h-6 bg-surface-hover flex items-center justify-center">
+                                    <User size={14} style={{ color: 'var(--text-secondary)' }} />
                                 </div>
-                                <span>{user?.name || 'Usuario'}</span>
+                                <span>{user?.name || 'User'}</span>
                                 <ChevronDown size={14} />
                             </button>
 
                             {showUserMenu && (
                                 <>
                                     <div
-                                        className="fixed inset-0 z-10"
+                                        className="fixed inset-0 z-dropdown"
                                         onClick={() => setShowUserMenu(false)}
                                     />
-                                    <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 z-20">
+                                    <div className="absolute right-0 mt-2 w-48 bg-surface border border-border-default z-popover">
                                         <button
                                             onClick={() => {
-                                                // Handle logout
-                                                localStorage.removeItem('usuario');
+                                                localStorage.removeItem('user');
                                                 window.location.href = '/';
                                             }}
-                                            className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                                            className="w-full px-4 py-2 text-left text-sm transition-colors duration-fast flex items-center gap-2"
+                                            style={{ color: 'var(--text-primary)' }}
+                                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--surface-hover)'}
+                                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                                         >
                                             <LogOut size={14} />
-                                            Cerrar Sesión
+                                            Sign Out
                                         </button>
                                     </div>
                                 </>
