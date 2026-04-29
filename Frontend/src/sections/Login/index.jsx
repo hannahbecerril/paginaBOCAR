@@ -1,14 +1,12 @@
-// sections/auth/Login.jsx
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Building, Users, Shield, ArrowRight } from 'lucide-react'; // Added Shield import
+import { Building, Users, Shield, ArrowRight } from 'lucide-react'; 
 import Cookies from 'js-cookie';
 import CryptoJS from 'crypto-js';
-import Button from '../../components/ui/Button';
-import Input from '../../components/ui/Input';
+import Button from '../../components/ui/Button'; // Ajusta las rutas si es necesario
+import Input from '../../components/ui/Input';   // Ajusta las rutas si es necesario
 
-export default function Login() {
-  const navigate = useNavigate();
+// Se recibe la prop onLogin
+export default function Login({ onLogin }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [userType, setUserType] = useState('internal');
@@ -21,15 +19,15 @@ export default function Login() {
     setLoading(true);
 
     try {
-      let url = 'http://127.0.0.1:8000/api/auth/login/internal/';
+      let url = 'http://127.0.0.1:8000/api/auth/login/interno/';
       let headers = { 'Content-Type': 'application/json' };
 
       const payloadObj = { password, username };
       const bodyString = JSON.stringify(payloadObj);
 
       if (userType === 'supplier') {
-        url = 'http://127.0.0.1:8000/api/auth/login/supplier/';
-        const secretKey = 'secret_key';
+        url = 'http://127.0.0.1:8000/api/auth/login/proveedor/';
+        const secretKey = 'secret_key'; 
         const hash = CryptoJS.HmacSHA256(bodyString, secretKey).toString(CryptoJS.enc.Hex);
         headers['X-Signature'] = hash;
       }
@@ -41,13 +39,27 @@ export default function Login() {
       });
 
       const data = await response.json();
-
-      if (!response.ok) throw new Error(data.error || 'Authentication error');
+      
+      console.log("Respuesta exacta del backend:", data);
+      
+      if (!response.ok) throw new Error(data.error || 'Error de autenticación');
 
       Cookies.set('access_token', data.access, { expires: 1, sameSite: 'strict' });
       Cookies.set('refresh_token', data.refresh, { expires: 7, sameSite: 'strict' });
-      localStorage.setItem('user', JSON.stringify(data.usuario));
-      navigate('/industrialization/rfqform');
+      
+
+      const rolDetectado = data?.usuario?.grupos?.[0] || data?.usuario?.groups?.[0] || data?.usuario?.rol || 'Industrialization';
+
+      console.log("Rol que detectó React:", rolDetectado);
+
+      const userToSave = {
+        ...data.usuario,
+        rol: rolDetectado
+      };
+      localStorage.setItem('user', JSON.stringify(userToSave));
+
+
+      onLogin(rolDetectado);
 
     } catch (err) {
       setError(err.message);
@@ -123,7 +135,7 @@ export default function Login() {
 
       {/* RIGHT PANEL - Login Form */}
       <div className="flex-1 w-full flex items-center justify-center px-6 py-8 overflow-y-auto">
-        <div className="md:w-65% mx-auto w-90%">
+        <div className="md:w-[65%] mx-auto w-[90%]">
           {/* Header */}
           <div className="mb-8 text-center md:text-left">
             <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>
