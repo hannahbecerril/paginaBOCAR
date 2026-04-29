@@ -1,3 +1,8 @@
+# DISCLAIMER
+# A falta de Active Directory, este archivo de Django se encarga de crear los grupos (roles) y usuarios 
+# iniciales para el sistema. Esto es útil para tener cuentas de prueba y roles predefinidos desde el 
+# inicio del desarrollo o para propósitos de demostración. No forma parte de la base de datos de producción.
+
 from django.core.management.base import BaseCommand
 from django.contrib.auth.models import User, Group
 
