@@ -2,6 +2,7 @@ import hmac
 import hashlib
 import json
 from django.conf import settings
+from rest_framework import generics, filters
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -19,6 +20,29 @@ from .permissions import IsSuperAdmin
 from django.shortcuts import get_object_or_404
 from rest_framework.generics import CreateAPIView
 from .serializers import UsuarioCreateSerializer
+from .models import RFQ_Base, Status_RFQ
+from .serializers import RFQBaseSerializer, ProveedorSerializer
+
+class RFQAprobadosListView(generics.ListAPIView):
+    serializer_class = RFQBaseSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        # 1. Buscamos los IDs de los RFQ que tengan el nivel correspondiente en True (ej. lev2)
+        rfq_aprobados_ids = Status_RFQ.objects.filter(lev2=True).values_list('id_rfq', flat=True)
+        
+        # 2. Filtramos la tabla base usando esos IDs
+        return RFQ_Base.objects.filter(id_rfq__in=rfq_aprobados_ids)
+
+class ProveedorListView(generics.ListAPIView):
+    serializer_class = ProveedorSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['username', 'first_name', 'last_name', 'email']
+
+    def get_queryset(self):
+        # Retorna solo usuarios que pertenezcan al grupo de proveedores y estén activos
+        return User.objects.filter(groups__name='Supplier', is_active=True)
 
 
 class LoginInternoView(APIView):
