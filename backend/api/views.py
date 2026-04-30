@@ -1,27 +1,30 @@
 import hmac
 import hashlib
 import json
+
 from django.conf import settings
-from rest_framework import generics, filters
+from django.http import JsonResponse
+from django.shortcuts import get_object_or_404
+from django.db import transaction
+from django.contrib.auth import authenticate, get_user_model
+from django.contrib.auth.models import User
+
+from rest_framework import generics, filters, status, viewsets
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status
-from django.contrib.auth import authenticate
-from .models import Archivo
-from rest_framework import viewsets
-from rest_framework_simplejwt.tokens import RefreshToken
-from django.http import JsonResponse
-from .serializers import ArchivoSerializer
-from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
-from django.contrib.auth.models import User
-from .serializers import UsuarioReadSerializer
+from rest_framework.generics import ListAPIView, CreateAPIView
+from rest_framework_simplejwt.tokens import RefreshToken
+from django.db import transaction
+# Modelos reales de tu BD
+from .models import RFQ_Base, Status_RFQ, MOLD_INFO_P1_I, MOLD_INFO_P2_I, DIE_TRIM_I
+from .serializers import (
+    ArchivoSerializer, UsuarioReadSerializer, UsuarioCreateSerializer,
+    RFQBaseSerializer, ProveedorSerializer
+)
 from .permissions import IsSuperAdmin
-from django.shortcuts import get_object_or_404
-from rest_framework.generics import CreateAPIView
-from .serializers import UsuarioCreateSerializer
-from .models import RFQ_Base, Status_RFQ
-from .serializers import RFQBaseSerializer, ProveedorSerializer
+
+User = get_user_model()
 
 class RFQAprobadosListView(generics.ListAPIView):
     serializer_class = RFQBaseSerializer
@@ -45,6 +48,56 @@ class ProveedorListView(generics.ListAPIView):
         return User.objects.filter(groups__name='Supplier', is_active=True)
 
 
+
+class AssignSuppliersRFQView(APIView):
+    """
+    Endpoint para guardar temporalmente la selección de proveedores para un RFQ
+    y enviarla a autorización de gerencia (Superadmin Compras).
+    """
+    
+    @transaction.atomic
+    def put(self, request, pk):
+        # 1. Obtener el RFQ
+        rfq = get_object_or_404(RFQ, pk=pk)
+
+        # 2. Validar estado inicial exigido por el negocio (DRAFT_PUR)
+        if rfq.status != 'DRAFT_PUR':
+            return Response(
+                {"error": f"El RFQ no se encuentra en borrador de compras. Estado actual: {rfq.status}"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 3. Obtener el arreglo de IDs de proveedores enviados desde el Frontend
+        proveedores_ids = request.data.get('proveedores_ids', [])
+        
+        if not isinstance(proveedores_ids, list) or not proveedores_ids:
+            return Response(
+                {"error": "Debes proporcionar un arreglo válido 'proveedores_ids' con al menos un proveedor."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 4. Validar que los usuarios existen y opcionalmente que pertenezcan al grupo 'Supplier'
+        proveedores_validos = User.objects.filter(id__in=proveedores_ids)
+        if proveedores_validos.count() != len(proveedores_ids):
+            return Response(
+                {"error": "Uno o más IDs de proveedores no son válidos o no existen en el sistema."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 5. Actualizar la relación ManyToMany usando el método .set() del ORM
+        # Esto reemplaza cualquier selección previa con la nueva lista enviada
+        rfq.proveedores_asignados.set(proveedores_validos)
+
+        # 6. Administrar la transición de estados
+        rfq.status = 'PENDING_PUR_APPROVAL'
+        rfq.save()
+
+        return Response({
+            "message": "Proveedores guardados exitosamente. RFQ enviado a autorización de gerencia.",
+            "rfq_id": rfq.id,
+            "nuevo_estado": rfq.status
+        }, status=status.HTTP_200_OK)
+    
 class LoginInternoView(APIView):
     def post(self, request):
         username = request.data.get('username')
@@ -248,3 +301,61 @@ class CrearUsuarioView(CreateAPIView):
     serializer_class = UsuarioCreateSerializer
     # Reutilizamos la misma clase de Custom Permission (IsSuperAdmin) y exigimos autenticación
     permission_classes = [IsAuthenticated, IsSuperAdmin]
+
+
+class CrearRFQView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request):
+        data = request.data
+        is_draft = data.get('is_draft', True)
+        rfq_type = data.get('type') 
+        
+        if not is_draft:
+            if not data.get('tool') or not rfq_type:
+                return Response(
+                    {"error": "Los campos 'tool' y 'type' son obligatorios para el envío definitivo."}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        try:
+            rfq_base = RFQ_Base.objects.create(
+                created_by=request.user.username,
+                tool=data.get('tool', ''),
+                type=rfq_type
+            )
+
+            Status_RFQ.objects.create(
+                id_rfq=rfq_base.id_rfq,
+                lev1=True, 
+                lev2=not is_draft
+            )
+
+            if rfq_type == 'mold':
+                mold_p1_data = data.get('mold_info_p1', {})
+                if mold_p1_data:
+                    MOLD_INFO_P1_I.objects.create(id_rfq=rfq_base, **mold_p1_data)
+
+                mold_p2_data = data.get('mold_info_p2', {})
+                if mold_p2_data:
+                    MOLD_INFO_P2_I.objects.create(id_rfq=rfq_base, **mold_p2_data)
+
+            elif rfq_type == 'die':
+                die_trim_data = data.get('die_trim', {})
+                if die_trim_data:
+                    DIE_TRIM_I.objects.create(id_rfq=rfq_base, **die_trim_data)
+            else:
+                raise ValueError("El tipo de RFQ es inválido. Debe ser 'mold' o 'die'.")
+
+            estado_msg = "DRAFT_IND" if is_draft else "PENDING_IND_APPROVAL"
+            
+            return Response({
+                "mensaje": f"RFQ {rfq_base.id_rfq} guardado exitosamente como {estado_msg}.",
+                "id_rfq": rfq_base.id_rfq
+            }, status=status.HTTP_201_CREATED)
+
+        except TypeError as e:
+            return Response({"error": f"Error de estructura en los datos: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
