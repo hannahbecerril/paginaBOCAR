@@ -19,8 +19,61 @@ from .permissions import IsSuperAdmin
 from django.shortcuts import get_object_or_404
 from rest_framework.generics import CreateAPIView
 from .serializers import UsuarioCreateSerializer
+from django.contrib.auth import get_user_model
+from django.db import transaction
+from .models.base import RFQ
 
+User = get_user_model()
 
+class AssignSuppliersRFQView(APIView):
+    """
+    Endpoint para guardar temporalmente la selección de proveedores para un RFQ
+    y enviarla a autorización de gerencia (Superadmin Compras).
+    """
+    
+    @transaction.atomic
+    def put(self, request, pk):
+        # 1. Obtener el RFQ
+        rfq = get_object_or_404(RFQ, pk=pk)
+
+        # 2. Validar estado inicial exigido por el negocio (DRAFT_PUR)
+        if rfq.status != 'DRAFT_PUR':
+            return Response(
+                {"error": f"El RFQ no se encuentra en borrador de compras. Estado actual: {rfq.status}"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 3. Obtener el arreglo de IDs de proveedores enviados desde el Frontend
+        proveedores_ids = request.data.get('proveedores_ids', [])
+        
+        if not isinstance(proveedores_ids, list) or not proveedores_ids:
+            return Response(
+                {"error": "Debes proporcionar un arreglo válido 'proveedores_ids' con al menos un proveedor."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 4. Validar que los usuarios existen y opcionalmente que pertenezcan al grupo 'Supplier'
+        proveedores_validos = User.objects.filter(id__in=proveedores_ids)
+        if proveedores_validos.count() != len(proveedores_ids):
+            return Response(
+                {"error": "Uno o más IDs de proveedores no son válidos o no existen en el sistema."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 5. Actualizar la relación ManyToMany usando el método .set() del ORM
+        # Esto reemplaza cualquier selección previa con la nueva lista enviada
+        rfq.proveedores_asignados.set(proveedores_validos)
+
+        # 6. Administrar la transición de estados
+        rfq.status = 'PENDING_PUR_APPROVAL'
+        rfq.save()
+
+        return Response({
+            "message": "Proveedores guardados exitosamente. RFQ enviado a autorización de gerencia.",
+            "rfq_id": rfq.id,
+            "nuevo_estado": rfq.status
+        }, status=status.HTTP_200_OK)
+    
 class LoginInternoView(APIView):
     def post(self, request):
         username = request.data.get('username')
