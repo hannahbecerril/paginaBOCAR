@@ -1,8 +1,11 @@
 from django.contrib import admin
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from api.views import hola, ArchivoViewSet, LoginInternoView, LoginProveedorView, ListarUsuariosView, CambiarEstadoUsuarioView, CrearUsuarioView, AssignSuppliersRFQView
-
+from api.views import (
+    hola, ArchivoViewSet, LoginInternoView, LoginProveedorView, 
+    ListarUsuariosView, CambiarEstadoUsuarioView, CrearUsuarioView,
+    RFQAprobadosListView, ProveedorListView, AssignSuppliersRFQView
+)
 router = DefaultRouter()
 router.register(r'archivos', ArchivoViewSet)
 
@@ -13,6 +16,8 @@ urlpatterns = [
     path('api/usuarios/listar/', ListarUsuariosView.as_view(), name='listar_usuarios'),
     path('api/usuarios/<int:pk>/estado/', CambiarEstadoUsuarioView.as_view(), name='cambiar_estado_usuario'),
     path('api/usuarios/crear/', CrearUsuarioView.as_view(), name='crear_usuario'),
+    path('rfqs/pendientes-compras/', RFQAprobadosListView.as_view(), name='rfqs-aprobados'),
+    path('usuarios/proveedores/', ProveedorListView.as_view(), name='proveedores-buscar'),
     path('api/', include(router.urls)),
     path('rfq/<int:pk>/asignar-proveedores/', AssignSuppliersRFQView.as_view(), name='rfq-asignar-proveedores'),
 ]

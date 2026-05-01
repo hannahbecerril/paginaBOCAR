@@ -1,20 +1,27 @@
 import hmac
 import hashlib
 import json
+
 from django.conf import settings
+from django.http import JsonResponse
+from django.shortcuts import get_object_or_404
+from django.db import transaction
+from django.contrib.auth import authenticate, get_user_model
+from django.contrib.auth.models import User
+
+from rest_framework import generics, filters, status, viewsets
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status
-from django.contrib.auth import authenticate
-from .models import Archivo
-from rest_framework import viewsets
-from rest_framework_simplejwt.tokens import RefreshToken
-from django.http import JsonResponse
-from .serializers import ArchivoSerializer
-from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
-from django.contrib.auth.models import User
-from .serializers import UsuarioReadSerializer
+from rest_framework.generics import ListAPIView, CreateAPIView
+from rest_framework_simplejwt.tokens import RefreshToken
+from django.db import transaction
+# Modelos reales de tu BD
+from .models import RFQ_Base, Status_RFQ, MOLD_INFO_P1_I, MOLD_INFO_P2_I, DIE_TRIM_I
+from .serializers import (
+    ArchivoSerializer, UsuarioReadSerializer, UsuarioCreateSerializer,
+    RFQBaseSerializer, ProveedorSerializer
+)
 from .permissions import IsSuperAdmin
 from django.shortcuts import get_object_or_404
 from rest_framework.generics import CreateAPIView
@@ -24,6 +31,29 @@ from django.db import transaction
 from .models.base import RFQ_Base, RFQ_Assignment, Status_RFQ
 
 User = get_user_model()
+
+class RFQAprobadosListView(generics.ListAPIView):
+    serializer_class = RFQBaseSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        # 1. Buscamos los IDs de los RFQ que tengan el nivel correspondiente en True (ej. lev2)
+        rfq_aprobados_ids = Status_RFQ.objects.filter(lev2=True).values_list('id_rfq', flat=True)
+        
+        # 2. Filtramos la tabla base usando esos IDs
+        return RFQ_Base.objects.filter(id_rfq__in=rfq_aprobados_ids)
+
+class ProveedorListView(generics.ListAPIView):
+    serializer_class = ProveedorSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['username', 'first_name', 'last_name', 'email']
+
+    def get_queryset(self):
+        # Retorna solo usuarios que pertenezcan al grupo de proveedores y estén activos
+        return User.objects.filter(groups__name='Supplier', is_active=True)
+
+
 
 class AssignSuppliersRFQView(APIView):
     """
@@ -297,3 +327,61 @@ class CrearUsuarioView(CreateAPIView):
     serializer_class = UsuarioCreateSerializer
     # Reutilizamos la misma clase de Custom Permission (IsSuperAdmin) y exigimos autenticación
     permission_classes = [IsAuthenticated, IsSuperAdmin]
+
+
+class CrearRFQView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request):
+        data = request.data
+        is_draft = data.get('is_draft', True)
+        rfq_type = data.get('type') 
+        
+        if not is_draft:
+            if not data.get('tool') or not rfq_type:
+                return Response(
+                    {"error": "Los campos 'tool' y 'type' son obligatorios para el envío definitivo."}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        try:
+            rfq_base = RFQ_Base.objects.create(
+                created_by=request.user.username,
+                tool=data.get('tool', ''),
+                type=rfq_type
+            )
+
+            Status_RFQ.objects.create(
+                id_rfq=rfq_base.id_rfq,
+                lev1=True, 
+                lev2=not is_draft
+            )
+
+            if rfq_type == 'mold':
+                mold_p1_data = data.get('mold_info_p1', {})
+                if mold_p1_data:
+                    MOLD_INFO_P1_I.objects.create(id_rfq=rfq_base, **mold_p1_data)
+
+                mold_p2_data = data.get('mold_info_p2', {})
+                if mold_p2_data:
+                    MOLD_INFO_P2_I.objects.create(id_rfq=rfq_base, **mold_p2_data)
+
+            elif rfq_type == 'die':
+                die_trim_data = data.get('die_trim', {})
+                if die_trim_data:
+                    DIE_TRIM_I.objects.create(id_rfq=rfq_base, **die_trim_data)
+            else:
+                raise ValueError("El tipo de RFQ es inválido. Debe ser 'mold' o 'die'.")
+
+            estado_msg = "DRAFT_IND" if is_draft else "PENDING_IND_APPROVAL"
+            
+            return Response({
+                "mensaje": f"RFQ {rfq_base.id_rfq} guardado exitosamente como {estado_msg}.",
+                "id_rfq": rfq_base.id_rfq
+            }, status=status.HTTP_201_CREATED)
+
+        except TypeError as e:
+            return Response({"error": f"Error de estructura en los datos: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)

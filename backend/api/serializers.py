@@ -2,7 +2,7 @@ from rest_framework import serializers
 from .models import Archivo
 from django.contrib.auth.models import User
 from django.contrib.auth.models import Group
-
+from .models import Archivo, RFQ_Base
 class ArchivoSerializer(serializers.ModelSerializer):
     class Meta:
         model = Archivo
@@ -50,3 +50,12 @@ class UsuarioCreateSerializer(serializers.ModelSerializer):
         user.groups.add(grupo)
         
         return user
+class RFQBaseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = RFQ_Base
+        fields = ['id_rfq', 'created_by', 'modified_date', 'tool', 'type']
+
+class ProveedorSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'email', 'first_name', 'last_name']

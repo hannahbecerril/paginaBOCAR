@@ -64,7 +64,7 @@ class Command(BaseCommand):
                 'password': 'ind1234',
                 'email': 'ind@bocar.com',
                 'group': 'Industrialization',
-                'is_staff': False,
+                'is_staff': True,
                 'is_active': True,
             },
             # Industrialization - Admin
@@ -73,7 +73,7 @@ class Command(BaseCommand):
                 'password': 'ind1234',
                 'email': 'ind.admin@bocar.com',
                 'group': 'Industrialization_Admin',
-                'is_staff': False,
+                'is_staff': True,
                 'is_active': True,
             },
             # Supplier - Standard User
