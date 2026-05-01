@@ -29,7 +29,11 @@ from .serializers import UsuarioCreateSerializer
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from .models.base import RFQ_Base, RFQ_Assignment, Status_RFQ
-
+from .models import (
+    RFQ_Base, Status_RFQ, 
+    MOLD_COSTBR_P1_S, MOLD_COSTBR_P2_S, MOLD_COSTBR_P3_S, 
+    MOLD_COSTBR_P4_S, MOLD_COSTBR_P5_S
+)
 User = get_user_model()
 
 class RFQAprobadosListView(generics.ListAPIView):
@@ -383,3 +387,153 @@ class CrearRFQView(APIView):
             return Response({"error": f"Error de estructura en los datos: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        
+class EditarRFQView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def put(self, request, pk):
+        # 1. Obtenemos los registros existentes
+        rfq_base = get_object_or_404(RFQ_Base, pk=pk)
+        status_rfq = get_object_or_404(Status_RFQ, id_rfq=rfq_base.id_rfq)
+
+        # 2. Validación crítica de negocio: 
+        # Si ya se envió a proveedores (Nivel 6), bloqueamos cualquier edición.
+        if status_rfq.lev6:
+            return Response(
+                {"error": "Edición bloqueada. El RFQ ya fue enviado a los proveedores."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        data = request.data
+        is_draft = data.get('is_draft', True)
+
+        try:
+            # 3. Actualizamos la tabla base si vienen esos datos
+            if 'tool' in data:
+                rfq_base.tool = data['tool']
+            if 'type' in data:
+                rfq_base.type = data['type']
+            rfq_base.save()
+
+            # 4. Máquina de estados
+            if is_draft:
+                # Si lo guardan como borrador, se queda en edición (Nivel 2)
+                status_rfq.lev2 = True
+                status_rfq.lev3 = False
+                status_rfq.lev4 = False
+            else:
+                # Si lo envían definitivo, pasa a revisión del SuperAdmin de Ind. (Nivel 3)
+                status_rfq.lev2 = False
+                status_rfq.lev3 = True
+                status_rfq.lev4 = False # Compras dejará de verlo temporalmente hasta que se apruebe
+                
+            status_rfq.save()
+
+            # 5. Actualización dinámica de las tablas técnicas
+            # Usamos .update() para que modifique los campos masivamente en una sola instrucción
+            rfq_type = rfq_base.type
+            if rfq_type == 'mold':
+                mold_p1_data = data.get('mold_info_p1', {})
+                if mold_p1_data:
+                    MOLD_INFO_P1_I.objects.filter(id_rfq=rfq_base).update(**mold_p1_data)
+
+                mold_p2_data = data.get('mold_info_p2', {})
+                if mold_p2_data:
+                    MOLD_INFO_P2_I.objects.filter(id_rfq=rfq_base).update(**mold_p2_data)
+
+            elif rfq_type == 'die':
+                die_trim_data = data.get('die_trim', {})
+                if die_trim_data:
+                    DIE_TRIM_I.objects.filter(id_rfq=rfq_base).update(**die_trim_data)
+
+            estado_msg = "Borrador (Nivel 2)" if is_draft else "Pendiente Aprobación SuperAdmin Ind (Nivel 3)"
+
+            return Response({
+                "mensaje": f"RFQ {rfq_base.id_rfq} actualizado correctamente. Estado actual: {estado_msg}.",
+                "id_rfq": rfq_base.id_rfq
+            }, status=status.HTTP_200_OK)
+
+        except TypeError as e:
+            return Response({"error": f"Error de estructura en los datos: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        
+class CotizacionProveedorView(APIView):
+    """
+    Endpoint para que el proveedor guarde su cotización en borrador (DRAFT_SUP) 
+    o la envíe oficialmente (SUBMITTED) a la licitación.
+    """
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, pk):
+        # 1. Obtengo el RFQ y su estado
+        rfq_base = get_object_or_404(RFQ_Base, pk=pk)
+        status_rfq, created = Status_RFQ.objects.get_or_create(id_rfq=rfq_base.id_rfq)
+
+        # 2. Verifico que el RFQ esté en Nivel 6 (enviado a proveedores)
+        if not status_rfq.lev6:
+            return Response(
+                {"error": "El RFQ no está habilitado para recibir cotizaciones o ya fue procesado."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        data = request.data
+        is_draft = data.get('is_draft', True)
+
+        try:
+            # 3. Extraigo los bloques de datos y actualizo/creo los registros en las 5 tablas
+            if rfq_base.type == 'mold':
+                
+                # Parte 1: Generales y Accesorios
+                cost_p1_data = data.get('mold_cost_p1', {})
+                if cost_p1_data:
+                    MOLD_COSTBR_P1_S.objects.update_or_create(id_rfq=rfq_base, defaults=cost_p1_data)
+
+                # Parte 2: Materiales y Maquinado
+                cost_p2_data = data.get('mold_cost_p2', {})
+                if cost_p2_data:
+                    MOLD_COSTBR_P2_S.objects.update_or_create(id_rfq=rfq_base, defaults=cost_p2_data)
+
+                # Parte 3: Tratamientos, Ingeniería y Simulación
+                cost_p3_data = data.get('mold_cost_p3', {})
+                if cost_p3_data:
+                    MOLD_COSTBR_P3_S.objects.update_or_create(id_rfq=rfq_base, defaults=cost_p3_data)
+
+                # Parte 4: Mediciones, Correcciones y Logística
+                cost_p4_data = data.get('mold_cost_p4', {})
+                if cost_p4_data:
+                    MOLD_COSTBR_P4_S.objects.update_or_create(id_rfq=rfq_base, defaults=cost_p4_data)
+
+                # Parte 5: Mejoras, Tryouts y Refacciones
+                cost_p5_data = data.get('mold_cost_p5', {})
+                if cost_p5_data:
+                    MOLD_COSTBR_P5_S.objects.update_or_create(id_rfq=rfq_base, defaults=cost_p5_data)
+
+            # 4. Máquina de estados y eventos
+            if is_draft:
+                estado_msg = "Cotización guardada como borrador local (Nivel 6)."
+            else:
+                # Transición a SUBMITTED (Nivel 7: respondido por proveedores)
+                status_rfq.lev6 = False
+                status_rfq.lev7 = True
+                status_rfq.save()
+                
+                # Disparo el evento de notificación interna
+                self._notificar_entrega(rfq_base.id_rfq)
+                estado_msg = "Cotización enviada oficialmente para revisión (Nivel 7)."
+
+            return Response({
+                "mensaje": estado_msg,
+                "id_rfq": rfq_base.id_rfq
+            }, status=status.HTTP_200_OK)
+
+        except TypeError as e:
+            return Response({"error": f"Error de estructura de datos: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def _notificar_entrega(self, id_rfq):
+        # Aquí eventualmente pondremos la lógica para enviar el email
+        print(f"EVENTO DE SISTEMA: La cotización para el RFQ {id_rfq} ha sido entregada. Notificando a Compras e Ind...")
