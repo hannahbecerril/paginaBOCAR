@@ -4,7 +4,8 @@ from rest_framework.routers import DefaultRouter
 from api.views import (
     hola, ArchivoViewSet, LoginInternoView, LoginProveedorView, 
     ListarUsuariosView, CambiarEstadoUsuarioView, CrearUsuarioView,
-    RFQAprobadosListView, ProveedorListView, AssignSuppliersRFQView, CrearRFQView,EditarRFQView,CotizacionProveedorView
+    RFQAprobadosListView, ProveedorListView, AssignSuppliersRFQView, 
+    CrearRFQView, EditarRFQView, CotizacionProveedorView, BuzonProveedorListView
 )
 router = DefaultRouter()
 router.register(r'archivos', ArchivoViewSet)
@@ -23,4 +24,5 @@ urlpatterns = [
     path('api/rfq/<int:pk>/cotizar/', CotizacionProveedorView.as_view(), name='rfq-cotizar-proveedor'),
     path('api/rfq/<int:pk>/editar/', EditarRFQView.as_view(), name='rfq-editar'),
     path('rfq/<int:pk>/asignar-proveedores/', AssignSuppliersRFQView.as_view(), name='rfq-asignar-proveedores'),
+    path('api/rfq/buzon-proveedor/', BuzonProveedorListView.as_view(), name='rfq-buzon-proveedor'),
 ]

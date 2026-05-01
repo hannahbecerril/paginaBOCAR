@@ -2,38 +2,37 @@ import hmac
 import hashlib
 import json
 
+# 1. Django
 from django.conf import settings
+from django.db import transaction
+from django.db.models import Q  # <--- CORRECCIÓN: Q se importa de aquí, no de .models
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
-from django.db import transaction
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.models import User
 
-from rest_framework import generics, filters, status, viewsets
+# 2. Django REST Framework y Terceros
+from rest_framework import filters, status, viewsets, generics
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.generics import ListAPIView, CreateAPIView
 from rest_framework_simplejwt.tokens import RefreshToken
-from django.db import transaction
 
-from .models import RFQ_Base, Status_RFQ, MOLD_INFO_P1_I, MOLD_INFO_P2_I, DIE_TRIM_I
+# 3. Importaciones Locales (Tu App)
+from .permissions import IsSuperAdmin
 from .serializers import (
     ArchivoSerializer, UsuarioReadSerializer, UsuarioCreateSerializer,
     RFQBaseSerializer, ProveedorSerializer
 )
-from .permissions import IsSuperAdmin
-from django.shortcuts import get_object_or_404
-from rest_framework.generics import CreateAPIView
-from .serializers import UsuarioCreateSerializer
-from django.contrib.auth import get_user_model
-from django.db import transaction
-from .models.base import RFQ_Base, RFQ_Assignment, Status_RFQ
+from .models.base import RFQ_Assignment  # Lo mantenemos si no está en tu __init__.py de models
 from .models import (
     RFQ_Base, Status_RFQ, 
+    MOLD_INFO_P1_I, MOLD_INFO_P2_I, DIE_TRIM_I,
     MOLD_COSTBR_P1_S, MOLD_COSTBR_P2_S, MOLD_COSTBR_P3_S, 
     MOLD_COSTBR_P4_S, MOLD_COSTBR_P5_S
 )
+
 User = get_user_model()
 
 class RFQAprobadosListView(generics.ListAPIView):
@@ -537,3 +536,38 @@ class CotizacionProveedorView(APIView):
     def _notificar_entrega(self, id_rfq):
         # Aquí eventualmente pondremos la lógica para enviar el email
         print(f"EVENTO DE SISTEMA: La cotización para el RFQ {id_rfq} ha sido entregada. Notificando a Compras e Ind...")
+
+class BuzonProveedorListView(generics.ListAPIView):
+    """
+    Endpoint: Buzón de RFQs asignadas para el Proveedor.
+    Retorna exclusivamente los RFQs donde el status esté en lev6 (enviado a proveedores)
+    y el request.user esté asignado en la tabla RFQ_Assignment.
+    """
+    serializer_class = RFQBaseSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user_id_str = str(self.request.user.id)
+
+        # 1. Encontrar en qué RFQs está invitado el usuario actual
+        asignaciones = RFQ_Assignment.objects.filter(
+            Q(supplier1=user_id_str) |
+            Q(supplier2=user_id_str) |
+            Q(supplier3=user_id_str) |
+            Q(supplier4=user_id_str) |
+            Q(supplier5=user_id_str) |
+            Q(supplier6=user_id_str) |
+            Q(supplier7=user_id_str) |
+            Q(supplier8=user_id_str) |
+            Q(supplier9=user_id_str) |
+            Q(supplier10=user_id_str)
+        ).values_list('id_rfq', flat=True)
+
+        # 2. De esas asignaciones, filtrar solo las que estén en estado lev6 (PUBLISHED_TO_SUPPLIERS)
+        rfqs_publicados = Status_RFQ.objects.filter(
+            id_rfq__in=asignaciones,
+            lev6=True
+        ).values_list('id_rfq', flat=True)
+
+        # 3. Retornar la consulta final con la información base del RFQ
+        return RFQ_Base.objects.filter(id_rfq__in=rfqs_publicados)
