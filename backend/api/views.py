@@ -16,7 +16,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.generics import ListAPIView, CreateAPIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.db import transaction
-# Modelos reales de tu BD
+
 from .models import RFQ_Base, Status_RFQ, MOLD_INFO_P1_I, MOLD_INFO_P2_I, DIE_TRIM_I
 from .serializers import (
     ArchivoSerializer, UsuarioReadSerializer, UsuarioCreateSerializer,
@@ -52,8 +52,6 @@ class ProveedorListView(generics.ListAPIView):
     def get_queryset(self):
         # Retorna solo usuarios que pertenezcan al grupo de proveedores y estén activos
         return User.objects.filter(groups__name='Supplier', is_active=True)
-
-
 
 class AssignSuppliersRFQView(APIView):
     """
