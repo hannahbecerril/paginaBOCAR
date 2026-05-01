@@ -21,7 +21,7 @@ from rest_framework.generics import CreateAPIView
 from .serializers import UsuarioCreateSerializer
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from .models.base import RFQ
+from .models.base import RFQ_Base, RFQ_Assignment, Status_RFQ
 
 User = get_user_model()
 
@@ -33,13 +33,17 @@ class AssignSuppliersRFQView(APIView):
     
     @transaction.atomic
     def put(self, request, pk):
-        # 1. Obtener el RFQ
-        rfq = get_object_or_404(RFQ, pk=pk)
+        # 1. Obtener el RFQ usando el nombre de modelo correcto (RFQ_Base)
+        rfq = get_object_or_404(RFQ_Base, pk=pk)
 
-        # 2. Validar estado inicial exigido por el negocio (DRAFT_PUR)
-        if rfq.status != 'DRAFT_PUR':
+        # 2. Validar estado inicial exigido por el negocio
+        # NOTA: Debes ajustar esta lógica según qué nivel (lev1-lev8) corresponde a 'DRAFT_PUR'
+        status_rfq, created = Status_RFQ.objects.get_or_create(id_rfq=rfq.id_rfq)
+        
+        # Ejemplo: Si DRAFT_PUR es lev4
+        if not status_rfq.lev4:
             return Response(
-                {"error": f"El RFQ no se encuentra en borrador de compras. Estado actual: {rfq.status}"}, 
+                {"error": "El RFQ no se encuentra en borrador de compras."}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -51,8 +55,15 @@ class AssignSuppliersRFQView(APIView):
                 {"error": "Debes proporcionar un arreglo válido 'proveedores_ids' con al menos un proveedor."}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
+            
+        # Como RFQ_Assignment solo soporta hasta 10 proveedores, agregamos esta validación
+        if len(proveedores_ids) > 10:
+            return Response(
+                {"error": "No puedes asignar más de 10 proveedores a un solo RFQ."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-        # 4. Validar que los usuarios existen y opcionalmente que pertenezcan al grupo 'Supplier'
+        # 4. Validar que los usuarios existen
         proveedores_validos = User.objects.filter(id__in=proveedores_ids)
         if proveedores_validos.count() != len(proveedores_ids):
             return Response(
@@ -60,18 +71,27 @@ class AssignSuppliersRFQView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 5. Actualizar la relación ManyToMany usando el método .set() del ORM
-        # Esto reemplaza cualquier selección previa con la nueva lista enviada
-        rfq.proveedores_asignados.set(proveedores_validos)
+        # 5. Actualizar la relación en el modelo correcto (RFQ_Assignment)
+        asignacion, _ = RFQ_Assignment.objects.get_or_create(id_rfq=rfq)
+        
+        # Primero limpiamos los proveedores anteriores en caso de que sea una actualización
+        for i in range(1, 11):
+            setattr(asignacion, f'supplier{i}', '')
+            
+        # Asignamos los nuevos proveedores (guardando el ID como string en el CharField)
+        for index, proveedor in enumerate(proveedores_validos, start=1):
+            setattr(asignacion, f'supplier{index}', str(proveedor.id))
+            
+        asignacion.save()
 
         # 6. Administrar la transición de estados
-        rfq.status = 'PENDING_PUR_APPROVAL'
-        rfq.save()
+        status_rfq.lev4 = False
+        status_rfq.lev5 = True
+        status_rfq.save()
 
         return Response({
             "message": "Proveedores guardados exitosamente. RFQ enviado a autorización de gerencia.",
-            "rfq_id": rfq.id,
-            "nuevo_estado": rfq.status
+            "rfq_id": rfq.id_rfq
         }, status=status.HTTP_200_OK)
     
 class LoginInternoView(APIView):
