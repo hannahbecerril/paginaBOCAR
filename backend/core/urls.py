@@ -5,7 +5,9 @@ from api.views import (
     hola, ArchivoViewSet, LoginInternoView, LoginProveedorView, 
     ListarUsuariosView, CambiarEstadoUsuarioView, CrearUsuarioView,
     RFQAprobadosListView, ProveedorListView, AssignSuppliersRFQView, 
-    CrearRFQView, EditarRFQView, CotizacionProveedorView, BuzonProveedorListView,AprobarRechazarProveedoresView,RFQPendientesAprobacionComprasListView
+    CrearRFQView, EditarRFQView, CotizacionProveedorView, BuzonProveedorListView, 
+    AprobarRechazarProveedoresView, RFQPendientesAprobacionComprasListView, ReviewRFQIndView, 
+    SelectWinningSupplierView
 )
 router = DefaultRouter()
 router.register(r'archivos', ArchivoViewSet)
@@ -27,5 +29,6 @@ urlpatterns = [
     path('api/rfq/<int:pk>/editar/', EditarRFQView.as_view(), name='rfq-editar'),
     path('rfq/<int:pk>/asignar-proveedores/', AssignSuppliersRFQView.as_view(), name='rfq-asignar-proveedores'),
     path('api/rfq/buzon-proveedor/', BuzonProveedorListView.as_view(), name='rfq-buzon-proveedor'),
-
+    path('api/rfq/<int:pk>/revision-ind/', ReviewRFQIndView.as_view(), name='rfq-revision-ind'),
+    path('api/rfq/<int:pk>/seleccionar-proveedor/', SelectWinningSupplierView.as_view(), name='rfq-seleccionar-proveedor'),
 ]

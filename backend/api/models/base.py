@@ -64,6 +64,7 @@ class RFQ_Assignment(models.Model):
     supplier8 = models.CharField(max_length=255, blank=True)
     supplier9 = models.CharField(max_length=255, blank=True)
     supplier10 = models.CharField(max_length=255, blank=True)
+    winning_supplier = models.CharField(max_length=255, blank=True, null=True)
 
     class Meta:
         db_table = 'RFQ_Assignment'

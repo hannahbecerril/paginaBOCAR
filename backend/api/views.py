@@ -632,3 +632,119 @@ class RFQPendientesAprobacionComprasListView(generics.ListAPIView):
         
         # 2. Retornamos la info base de esos RFQs
         return RFQ_Base.objects.filter(id_rfq__in=rfqs_pendientes_ids)
+
+class ReviewRFQIndView(APIView):
+    """
+    Endpoint: Aprobación o Rechazo de RFQs por el SuperAdmin de Industrialización.
+    Método: PATCH
+    Cuerpo esperado: {"is_approved": true} o {"is_approved": false}
+    """
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def patch(self, request, pk):
+        # 1. Validación de Permisos: Solo Industrialization_Admin o SuperAdmin pueden hacer esto
+        grupos_usuario = request.user.groups.values_list('name', flat=True)
+        if 'Industrialization_Admin' not in grupos_usuario and 'SuperAdmin' not in grupos_usuario:
+            return Response(
+                {"error": "Acceso denegado. Se requiere rol de Administrador de Industrialización."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # 2. Obtener el RFQ y su estado
+        rfq_base = get_object_or_404(RFQ_Base, pk=pk)
+        status_rfq = get_object_or_404(Status_RFQ, id_rfq=rfq_base.id_rfq)
+
+        # 3. Validar que el RFQ esté en Nivel 3 (Pendiente de revisión)
+        if not status_rfq.lev3:
+            return Response(
+                {"error": "El RFQ no está en estado pendiente de revisión (Nivel 3). Solo se pueden revisar RFQs enviados por el equipo."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 4. Obtener la decisión del cuerpo de la petición
+        is_approved = request.data.get('is_approved')
+        if is_approved is None:
+            return Response(
+                {"error": "Se requiere el campo 'is_approved' (booleano) en el cuerpo de la petición."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 5. Máquina de Estados: Aprobar o Rechazar
+        # Convertimos a booleano seguro por si el frontend lo manda como string
+        if str(is_approved).lower() in ['true', '1', 't', 'y', 'yes']:
+            # APROBADO -> Pasa a Nivel 4 (Enviado a Compras)
+            status_rfq.lev3 = False
+            status_rfq.lev4 = True
+            estado_msg = "APPROVED_BY_IND (Aprobado y transferido a Compras)"
+        else:
+            # RECHAZADO -> Regresa a Nivel 2 (Borrador para que el equipo lo corrija)
+            status_rfq.lev3 = False
+            status_rfq.lev2 = True
+            estado_msg = "DRAFT_IND (Rechazado, regresó a edición)"
+
+        status_rfq.save()
+
+        return Response({
+            "mensaje": f"RFQ {rfq_base.id_rfq} evaluado correctamente.",
+            "id_rfq": rfq_base.id_rfq,
+            "estado_actual": estado_msg
+        }, status=status.HTTP_200_OK)
+    
+class SelectWinningSupplierView(APIView):
+    """
+    Endpoint: Selección de Proveedor y Envío a Validación
+    Método: PATCH
+    Cuerpo esperado: {"proveedor_id": "12"}
+    """
+    permission_classes = [IsAuthenticated, IsPurchasesUser]
+
+    @transaction.atomic
+    def patch(self, request, pk):
+        # 1. Obtener RFQ, Estado y Asignaciones
+        rfq_base = get_object_or_404(RFQ_Base, pk=pk)
+        status_rfq = get_object_or_404(Status_RFQ, id_rfq=rfq_base.id_rfq)
+        asignacion = get_object_or_404(RFQ_Assignment, id_rfq=rfq_base)
+
+        # 2. Validar que estemos en Nivel 7 (Respondido por proveedor)
+        if not status_rfq.lev7:
+            return Response(
+                {"error": "El RFQ no está en la fase de selección (Nivel 7)."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 3. Obtener el ID enviado en la petición
+        proveedor_id = request.data.get('proveedor_id')
+        if not proveedor_id:
+            return Response(
+                {"error": "Se requiere el campo 'proveedor_id' en el cuerpo de la petición."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 4. Validar que el proveedor haya sido invitado (que esté entre supplier1 y supplier10)
+        proveedores_invitados = [
+            asignacion.supplier1, asignacion.supplier2, asignacion.supplier3,
+            asignacion.supplier4, asignacion.supplier5, asignacion.supplier6,
+            asignacion.supplier7, asignacion.supplier8, asignacion.supplier9,
+            asignacion.supplier10
+        ]
+        
+        if str(proveedor_id) not in proveedores_invitados:
+            return Response(
+                {"error": "El proveedor seleccionado no forma parte de la lista de invitados a esta licitación."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 5. Guardar al ganador
+        asignacion.winning_supplier = str(proveedor_id)
+        asignacion.save()
+
+        # 6. Actualizar la máquina de estados a Nivel 8 (Pendiente de Fallo Gerencial)
+        status_rfq.lev7 = False
+        status_rfq.lev8 = True
+        status_rfq.save()
+
+        return Response({
+            "mensaje": f"Proveedor {proveedor_id} marcado como ganador virtual. RFQ enviado a validación gerencial (Nivel 8).",
+            "id_rfq": rfq_base.id_rfq
+        }, status=status.HTTP_200_OK)
