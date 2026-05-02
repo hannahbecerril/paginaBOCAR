@@ -462,10 +462,10 @@ class EditarRFQView(APIView):
         
 class CotizacionProveedorView(APIView):
     """
-    Endpoint para que el proveedor guarde su cotización en borrador (DRAFT_SUP) 
-    o la envíe oficialmente (SUBMITTED) a la licitación.
+    Endpoint para que el proveedor guarde su cotización en borrador (DRAFT_SUP)
+    o la envíe oficialmente (SUBMITTED) a la licitación
     """
-    permission_classes = [IsAuthenticated, IsSupplier]
+    permission_classes = [IsAuthenticated]
 
     @transaction.atomic
     def post(self, request, pk):
@@ -473,15 +473,18 @@ class CotizacionProveedorView(APIView):
         rfq_base = get_object_or_404(RFQ_Base, pk=pk)
         status_rfq, created = Status_RFQ.objects.get_or_create(id_rfq=rfq_base.id_rfq)
 
-        # 2. Verifico que el RFQ esté en Nivel 6 (enviado a proveedores)
+        # 2. Verifico que el RFQ está en Nivel 6 (enviado a proveedores)
         if not status_rfq.lev6:
             return Response(
-                {"error": "El RFQ no está habilitado para recibir cotizaciones o ya fue procesado."}, 
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "El RFQ no está habilitado para recibir cotizaciones o ya fue procesado."},
+                 status=status.HTTP_400_BAD_REQUEST
             )
 
         data = request.data
         is_draft = data.get('is_draft', True)
+        
+        # Obtenemos el username del usuario autenticado (el proveedor) para usarlo de llave única
+        proveedor_identificador = request.user.username 
 
         try:
             # 3. Extraigo los bloques de datos y actualizo/creo los registros en las 5 tablas
@@ -490,27 +493,50 @@ class CotizacionProveedorView(APIView):
                 # Parte 1: Generales y Accesorios
                 cost_p1_data = data.get('mold_cost_p1', {})
                 if cost_p1_data:
-                    MOLD_COSTBR_P1_S.objects.update_or_create(id_rfq=rfq_base, defaults=cost_p1_data)
+                    # Inyectamos de forma forzada quién lo elaboró
+                    cost_p1_data['Elaborated_by'] = proveedor_identificador
+                    
+                    MOLD_COSTBR_P1_S.objects.update_or_create(
+                        id_rfq=rfq_base, 
+                        Elaborated_by=proveedor_identificador, 
+                        defaults=cost_p1_data
+                    )
 
                 # Parte 2: Materiales y Maquinado
                 cost_p2_data = data.get('mold_cost_p2', {})
                 if cost_p2_data:
-                    MOLD_COSTBR_P2_S.objects.update_or_create(id_rfq=rfq_base, defaults=cost_p2_data)
+                    MOLD_COSTBR_P2_S.objects.update_or_create(
+                        id_rfq=rfq_base, 
+                        Elaborated_by=proveedor_identificador, 
+                        defaults=cost_p2_data
+                    )
 
                 # Parte 3: Tratamientos, Ingeniería y Simulación
                 cost_p3_data = data.get('mold_cost_p3', {})
                 if cost_p3_data:
-                    MOLD_COSTBR_P3_S.objects.update_or_create(id_rfq=rfq_base, defaults=cost_p3_data)
+                    MOLD_COSTBR_P3_S.objects.update_or_create(
+                        id_rfq=rfq_base, 
+                        Elaborated_by=proveedor_identificador, 
+                        defaults=cost_p3_data
+                    )
 
                 # Parte 4: Mediciones, Correcciones y Logística
                 cost_p4_data = data.get('mold_cost_p4', {})
                 if cost_p4_data:
-                    MOLD_COSTBR_P4_S.objects.update_or_create(id_rfq=rfq_base, defaults=cost_p4_data)
+                    MOLD_COSTBR_P4_S.objects.update_or_create(
+                        id_rfq=rfq_base, 
+                        Elaborated_by=proveedor_identificador, 
+                        defaults=cost_p4_data
+                    )
 
                 # Parte 5: Mejoras, Tryouts y Refacciones
                 cost_p5_data = data.get('mold_cost_p5', {})
                 if cost_p5_data:
-                    MOLD_COSTBR_P5_S.objects.update_or_create(id_rfq=rfq_base, defaults=cost_p5_data)
+                    MOLD_COSTBR_P5_S.objects.update_or_create(
+                        id_rfq=rfq_base, 
+                        Elaborated_by=proveedor_identificador, 
+                        defaults=cost_p5_data
+                    )
 
             # 4. Máquina de estados y eventos
             if is_draft:
@@ -520,7 +546,7 @@ class CotizacionProveedorView(APIView):
                 status_rfq.lev6 = False
                 status_rfq.lev7 = True
                 status_rfq.save()
-                
+
                 # Disparo el evento de notificación interna
                 self._notificar_entrega(rfq_base.id_rfq)
                 estado_msg = "Cotización enviada oficialmente para revisión (Nivel 7)."
@@ -537,7 +563,7 @@ class CotizacionProveedorView(APIView):
 
     def _notificar_entrega(self, id_rfq):
         # Aquí eventualmente pondremos la lógica para enviar el email
-        print(f"EVENTO DE SISTEMA: La cotización para el RFQ {id_rfq} ha sido entregada. Notificando a Compras e Ind...")
+        print(f"EVENTO DE SISTEMA: La cotización para el RFQ {id_rfq} ha sido entregada. Notificando a Compras e Industrialización")
 
 class BuzonProveedorListView(generics.ListAPIView):
     """
