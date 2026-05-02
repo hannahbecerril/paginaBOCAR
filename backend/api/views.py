@@ -20,7 +20,7 @@ from rest_framework.generics import ListAPIView, CreateAPIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
 # 3. Importaciones Locales (Tu App)
-from .permissions import IsSuperAdmin
+from .permissions import IsSuperAdmin, IsIndAdmin, IsIndUser, IsPurchasesAdmin, IsPurchasesUser, IsSupplier
 from .serializers import (
     ArchivoSerializer, UsuarioReadSerializer, UsuarioCreateSerializer,
     RFQBaseSerializer, ProveedorSerializer
@@ -30,25 +30,25 @@ from .models import (
     RFQ_Base, Status_RFQ, 
     MOLD_INFO_P1_I, MOLD_INFO_P2_I, DIE_TRIM_I,
     MOLD_COSTBR_P1_S, MOLD_COSTBR_P2_S, MOLD_COSTBR_P3_S, 
-    MOLD_COSTBR_P4_S, MOLD_COSTBR_P5_S
+    MOLD_COSTBR_P4_S, MOLD_COSTBR_P5_S,Archivo
 )
 
 User = get_user_model()
 
 class RFQAprobadosListView(generics.ListAPIView):
     serializer_class = RFQBaseSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsPurchasesUser]
 
     def get_queryset(self):
         # 1. Buscamos los IDs de los RFQ que tengan el nivel correspondiente en True (ej. lev2)
-        rfq_aprobados_ids = Status_RFQ.objects.filter(lev2=True).values_list('id_rfq', flat=True)
+        rfq_aprobados_ids = Status_RFQ.objects.filter(lev4=True).values_list('id_rfq', flat=True)
         
         # 2. Filtramos la tabla base usando esos IDs
         return RFQ_Base.objects.filter(id_rfq__in=rfq_aprobados_ids)
 
 class ProveedorListView(generics.ListAPIView):
     serializer_class = ProveedorSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated,IsPurchasesUser]
     filter_backends = [filters.SearchFilter]
     search_fields = ['username', 'first_name', 'last_name', 'email']
 
@@ -61,7 +61,8 @@ class AssignSuppliersRFQView(APIView):
     Endpoint para guardar temporalmente la selección de proveedores para un RFQ
     y enviarla a autorización de gerencia (Superadmin Compras).
     """
-    
+    permission_classes = [IsAuthenticated, IsPurchasesUser]
+
     @transaction.atomic
     def put(self, request, pk):
         # 1. Obtener el RFQ usando el nombre de modelo correcto (RFQ_Base)
@@ -330,8 +331,9 @@ class CrearUsuarioView(CreateAPIView):
     permission_classes = [IsAuthenticated, IsSuperAdmin]
 
 
+
 class CrearRFQView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsIndUser]
 
     @transaction.atomic
     def post(self, request):
@@ -388,7 +390,7 @@ class CrearRFQView(APIView):
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         
 class EditarRFQView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsIndUser]
 
     @transaction.atomic
     def put(self, request, pk):
@@ -463,7 +465,7 @@ class CotizacionProveedorView(APIView):
     Endpoint para que el proveedor guarde su cotización en borrador (DRAFT_SUP) 
     o la envíe oficialmente (SUBMITTED) a la licitación.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsSupplier]
 
     @transaction.atomic
     def post(self, request, pk):
@@ -544,7 +546,7 @@ class BuzonProveedorListView(generics.ListAPIView):
     y el request.user esté asignado en la tabla RFQ_Assignment.
     """
     serializer_class = RFQBaseSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated,IsSupplier]
 
     def get_queryset(self):
         user_id_str = str(self.request.user.id)
@@ -571,3 +573,62 @@ class BuzonProveedorListView(generics.ListAPIView):
 
         # 3. Retornar la consulta final con la información base del RFQ
         return RFQ_Base.objects.filter(id_rfq__in=rfqs_publicados)
+    
+class AprobarRechazarProveedoresView(APIView):
+    """
+    Endpoint PATCH para que el SuperAdmin de Compras apruebe o rechace 
+    la lista de proveedores seleccionados para un RFQ.
+    Transiciona el estado de lev5 a lev6 (Aprobado) o regresa a lev4 (Rechazado).
+    """
+    permission_classes = [IsAuthenticated, IsPurchasesAdmin]
+
+    @transaction.atomic
+    def patch(self, request, pk):
+        rfq_base = get_object_or_404(RFQ_Base, pk=pk)
+        status_rfq = get_object_or_404(Status_RFQ, id_rfq=rfq_base.id_rfq)
+
+        if not status_rfq.lev5:
+            return Response(
+                {"error": "El RFQ no está en espera de autorización de gerencia de compras (Nivel 5)."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        accion = request.data.get('accion', '').lower()
+
+        if accion == 'aprobar':
+            status_rfq.lev5 = False
+            status_rfq.lev6 = True
+            mensaje = "Lista de proveedores aprobada. El RFQ ha sido publicado a los proveedores (Nivel 6)."
+        
+        elif accion == 'rechazar':
+            status_rfq.lev5 = False
+            status_rfq.lev4 = True
+            mensaje = "Lista rechazada. El RFQ ha sido devuelto a los compradores para una nueva selección (Nivel 4)."
+        
+        else:
+            return Response(
+                {"error": "Acción inválida. Usa 'aprobar' o 'rechazar'."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        status_rfq.save()
+
+        return Response({
+            "mensaje": mensaje,
+            "id_rfq": rfq_base.id_rfq
+        }, status=status.HTTP_200_OK)
+    
+class RFQPendientesAprobacionComprasListView(generics.ListAPIView):
+    """
+    Endpoint GET para que el SuperAdmin de Compras vea la lista 
+    de RFQs que están esperando su autorización de proveedores (Nivel 5).
+    """
+    serializer_class = RFQBaseSerializer
+    permission_classes = [IsAuthenticated, IsPurchasesAdmin]
+
+    def get_queryset(self):
+        # 1. Buscamos los IDs de los RFQ que están en Nivel 5
+        rfqs_pendientes_ids = Status_RFQ.objects.filter(lev5=True).values_list('id_rfq', flat=True)
+        
+        # 2. Retornamos la info base de esos RFQs
+        return RFQ_Base.objects.filter(id_rfq__in=rfqs_pendientes_ids)
