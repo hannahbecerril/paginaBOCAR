@@ -1,25 +1,32 @@
 // src/App.jsx
+import { NotificationProvider } from './contexts/NotificationContext';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './sections/Login';
-import ComprasDashboard from './sections/Compras';
-import IndustrializacionDashboard from './sections/Industrializacion';
+import PurchasesDashboard from './sections/Purchases';
+import IndustrializationDashboard from './sections/Industrialization';
+import SuppliersDashboard from './sections/Suppliers';
 
 function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        {/* Login */}
-        <Route path="/login" element={<Login />} />
+      <NotificationProvider>
+        <Routes>
+          {/* Login */}
+          <Route path="/Login" element={<Login />} />
 
-        {/* Compras module - IMPORTANT: Add /* to enable nested routes */}
-        <Route path="/compras/*" element={<ComprasDashboard />} />
+          {/* Purchases module */}
+          <Route path="/Purchases/*" element={<PurchasesDashboard />} />
 
-        {/* Industrializacion module - IMPORTANT: Add /* to enable nested routes */}
-        <Route path="/industrializacion/*" element={<IndustrializacionDashboard />} />
+          {/* Industrialization module  */}
+          <Route path="/Industrialization/*" element={<IndustrializationDashboard />} />
 
-        {/* Fallback */}
-        <Route path="*" element={<Navigate to="/login" />} />
-      </Routes>
+          {/* Suppliers module */}
+          <Route path="/Suppliers/*" element={<SuppliersDashboard />} />
+
+          {/* Fallback */}
+          <Route path="*" element={<Navigate to="/Login" />} />
+        </Routes>
+      </NotificationProvider>
     </BrowserRouter>
   );
 }

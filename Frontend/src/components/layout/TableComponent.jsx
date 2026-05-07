@@ -106,6 +106,19 @@ export default function TableComponent({
             : <ArrowDown size={12} style={{ color: 'var(--text-secondary)' }} />;
     };
 
+    // Helper function to get consistent badge styling
+    const getBadgeStyles = (value, colorMap) => {
+        const lowerValue = String(value).toLowerCase();
+        const colorClass = colorMap[lowerValue];
+
+        if (colorClass) {
+            return colorClass;
+        }
+
+        // Default fallback
+        return 'bg-surface-hover text-text-secondary border-border-default';
+    };
+
     // 🎨 DEFAULT RENDERERS
     const renderCell = (value, type, row) => {
         switch (type) {
@@ -140,8 +153,8 @@ export default function TableComponent({
                         <div className="flex-1 max-w-[100px]">
                             <div className="h-1.5 bg-border-default overflow-hidden">
                                 <div
-                                    className="h-full bg-brand-accent transition-all duration-300"
-                                    style={{ width: `${value}%` }}
+                                    className="h-full transition-all duration-300"
+                                    style={{ width: `${value}%`, backgroundColor: 'var(--brand-accent)' }}
                                 />
                             </div>
                         </div>
@@ -157,30 +170,41 @@ export default function TableComponent({
                     </div>
                 );
 
-            case 'status':
-                const statusColors = {
-                    active: 'bg-status-active/10 text-status-active border-status-active',
-                    pending: 'bg-status-pending/10 text-status-pending border-status-pending',
-                    completed: 'bg-status-completed/10 text-status-completed border-status-completed',
-                    cancelled: 'bg-status-cancelled/10 text-status-cancelled border-status-cancelled',
-                    inactive: 'bg-surface-disabled text-text-tertiary border-border-default',
-                };
-                const statusColor = statusColors[value?.toLowerCase()] || 'bg-surface-hover text-text-secondary border-border-default';
+            case 'badge':
                 return (
-                    <span className={`inline-flex items-center px-2.5 py-0.5 text-xs font-medium border ${statusColor}`}>
+                    <span className="inline-flex w-20 justify-center px-2.5 py-0.5 text-xs font-medium border" style={{
+                        color: 'var(--text-secondary)',
+                        backgroundColor: 'var(--surface-hover)',
+                        borderColor: 'var(--border-default)'
+                    }}>
+                        {value}
+                    </span>
+                );
+
+            case 'status':
+                const statusStyles = {
+                    active: { color: 'var(--status-active)', backgroundColor: 'rgba(16, 185, 129, 0.1)', borderColor: 'var(--status-active)' },
+                    pending: { color: 'var(--status-pending)', backgroundColor: 'rgba(245, 158, 11, 0.1)', borderColor: 'var(--status-pending)' },
+                    completed: { color: 'var(--status-completed)', backgroundColor: 'rgba(59, 130, 246, 0.1)', borderColor: 'var(--status-completed)' },
+                    cancelled: { color: 'var(--status-cancelled)', backgroundColor: 'rgba(239, 68, 68, 0.1)', borderColor: 'var(--status-cancelled)' },
+                    inactive: { color: 'var(--text-tertiary)', backgroundColor: 'var(--surface-disabled)', borderColor: 'var(--border-default)' }
+                };
+                const statusStyle = statusStyles[value?.toLowerCase()] || { color: 'var(--text-secondary)', backgroundColor: 'var(--surface-hover)', borderColor: 'var(--border-default)' };
+                return (
+                    <span className="inline-flex justify-center px-2.5 py-0.5 text-xs font-medium border" style={statusStyle}>
                         {value}
                     </span>
                 );
 
             case 'priority':
-                const priorityColors = {
-                    high: 'bg-priority-high/10 text-priority-high border-priority-high',
-                    medium: 'bg-priority-medium/10 text-priority-medium border-priority-medium',
-                    low: 'bg-priority-low/10 text-priority-low border-priority-low',
+                const priorityStyles = {
+                    high: { color: 'var(--priority-high)', backgroundColor: 'rgba(239, 68, 68, 0.1)', borderColor: 'var(--priority-high)' },
+                    medium: { color: 'var(--priority-medium)', backgroundColor: 'rgba(245, 158, 11, 0.1)', borderColor: 'var(--priority-medium)' },
+                    low: { color: 'var(--priority-low)', backgroundColor: 'rgba(16, 185, 129, 0.1)', borderColor: 'var(--priority-low)' }
                 };
-                const priorityColor = priorityColors[value?.toLowerCase()] || 'bg-surface-hover text-text-secondary border-border-default';
+                const priorityStyle = priorityStyles[value?.toLowerCase()] || { color: 'var(--text-secondary)', backgroundColor: 'var(--surface-hover)', borderColor: 'var(--border-default)' };
                 return (
-                    <span className={`inline-flex items-center px-2.5 py-0.5 text-xs font-medium border ${priorityColor}`}>
+                    <span className="w-20 inline-flex justify-center px-2.5 py-0.5 text-xs font-medium border" style={priorityStyle}>
                         {value}
                     </span>
                 );
