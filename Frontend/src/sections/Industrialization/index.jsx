@@ -1,11 +1,13 @@
 // src/sections/Industrialization/index.jsx
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { useState } from 'react';
 import NavBar from '../../components/layout/NavBar';
 import RFQForm from './RFQForm';
 import Users from './Users';
 import Drafts from './Drafts';
 import RFQList from './RFQList';
+
+import RFQDetails from '../../components/layout/RFQDetails';
+import UserDetails from '../../components/layout/UserDetails';
 
 export default function IndustrializationDashboard() {
     const tabs = [
@@ -31,6 +33,10 @@ export default function IndustrializationDashboard() {
                     <Route path="Users" element={<Users />} />
                     <Route path="Drafts" element={<Drafts />} />
                     <Route path="RFQ-List" element={<RFQList />} />
+
+                    {/* Dynamic routes for details */}
+                    <Route path="rfq/:id" element={<RFQDetails />} />
+                    <Route path="user/:id" element={<UserDetails />} />
                 </Routes>
             </div>
         </div>

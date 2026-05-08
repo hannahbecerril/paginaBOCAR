@@ -1,7 +1,10 @@
 // sections/RFQList.jsx
+import { useNavigate } from 'react-router-dom';
 import TableComponent from '../../components/layout/TableComponent';
 
 export default function RFQList() {
+    const navigate = useNavigate();
+
     const RFQList_data = [
         {
             id: "SOL-001",
@@ -64,10 +67,14 @@ export default function RFQList() {
         { key: 'title', label: 'RFQ', type: 'file_name', sortable: true, filterable: true },
         { key: 'category', label: 'Category', type: 'badge', sortable: true, filterable: true },
         { key: 'priority', label: 'Priority', type: 'priority', sortable: true, filterable: true },
-        { key: 'status', label: 'Status', type: 'badge', sortable: true, filterable: true },
+        { key: 'status', label: 'Status', type: 'rfq-status', sortable: true, filterable: true },
         { key: 'offers', label: 'Offers', type: 'number', sortable: true, filterable: true },
         { key: 'last_modified', label: 'Last Time Modified', type: 'time', sortable: true, filterable: true },
     ];
+
+    const handleRowClick = (row) => {
+        navigate(`/Suppliers/rfq/${row.id}`);
+    };
 
     return (
         <TableComponent
@@ -75,6 +82,7 @@ export default function RFQList() {
             subtitle="Manage RFQs"
             data={RFQList_data}
             columns={columns}
+            onClickRow={handleRowClick}
             onAdd={() => alert('Add RFQ')}
             onEdit={(row) => console.log('Edit', row)}
             onDelete={(row) => console.log('Delete', row)}

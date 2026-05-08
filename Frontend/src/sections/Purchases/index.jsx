@@ -6,6 +6,9 @@ import Users from './Users';
 import Drafts from './Drafts';
 import RFQList from './RFQList';
 
+import RFQDetails from '../../components/layout/RFQDetails';
+import UserDetails from '../../components/layout/UserDetails';
+
 export default function PurchasesDashboard() {
     const tabs = [
         { label: 'Suppliers List', path: 'Suppliers' },
@@ -30,6 +33,11 @@ export default function PurchasesDashboard() {
                     <Route path="Users" element={<Users />} />
                     <Route path="Drafts" element={<Drafts />} />
                     <Route path="RFQ-List" element={<RFQList />} />
+
+                    {/* Dynamic routes for details */}
+                    <Route path="rfq/:id" element={<RFQDetails />} />
+                    <Route path="user/:id" element={<UserDetails />} />
+                    <Route path="supplier/:id" element={<UserDetails />} />
                 </Routes>
             </div>
         </div>

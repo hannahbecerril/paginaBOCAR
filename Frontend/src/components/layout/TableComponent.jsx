@@ -24,13 +24,14 @@ export default function TableComponent({
     onAdd,
     onEdit,
     onDelete,
+    onClickRow
 }) {
     const [search, setSearch] = useState('');
     const [showFilters, setShowFilters] = useState(false);
     const [filters, setFilters] = useState({});
     const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
 
-    // 🔍 SEARCH
+    // SEARCH
     const filteredData = useMemo(() => {
         let result = data;
 
@@ -53,7 +54,7 @@ export default function TableComponent({
         return result;
     }, [data, search, filters]);
 
-    // 🔃 SORT
+    // SORT
     const sortedData = useMemo(() => {
         if (!sortConfig.key) return filteredData;
 
@@ -96,7 +97,7 @@ export default function TableComponent({
         setSearch('');
     };
 
-    // 🔽 SORT ICON
+    // SORT ICON
     const SortIcon = ({ columnKey }) => {
         if (sortConfig.key !== columnKey) {
             return <ChevronsUpDown size={12} style={{ color: 'var(--text-tertiary)' }} />;
@@ -119,7 +120,7 @@ export default function TableComponent({
         return 'bg-surface-hover text-text-secondary border-border-default';
     };
 
-    // 🎨 DEFAULT RENDERERS
+    // DEFAULT RENDERERS
     const renderCell = (value, type, row) => {
         switch (type) {
             case 'person_name':
@@ -192,6 +193,29 @@ export default function TableComponent({
                 const statusStyle = statusStyles[value?.toLowerCase()] || { color: 'var(--text-secondary)', backgroundColor: 'var(--surface-hover)', borderColor: 'var(--border-default)' };
                 return (
                     <span className="inline-flex justify-center px-2.5 py-0.5 text-xs font-medium border" style={statusStyle}>
+                        {value}
+                    </span>
+                );
+
+            case 'rfq-status':
+                const rfqStatusStyles = {
+                    "Industrialization Draft": { color: 'var(--text-tertiary)', backgroundColor: 'var(--surface-disabled)', borderColor: 'var(--border-default)' },
+                    "Sent to Purchases": { color: 'var(--status-active)', backgroundColor: 'rgba(16, 185, 129, 0.1)', borderColor: 'var(--status-active)' },
+
+                    "Purchases Draft": { color: 'var(--text-tertiary)', backgroundColor: 'var(--surface-disabled)', borderColor: 'var(--border-default)' },
+                    "Sent to Suppliers": { color: 'var(--status-active)', backgroundColor: 'rgba(16, 185, 129, 0.1)', borderColor: 'var(--status-active)' },
+
+                    "Suppliers Draft": { color: 'var(--text-tertiary)', backgroundColor: 'var(--surface-disabled)', borderColor: 'var(--border-default)' },
+                    "Suppliers Response": { color: 'var(--status-completed)', backgroundColor: 'rgba(59, 130, 246, 0.1)', borderColor: 'var(--status-completed)' },
+
+                    "Waiting for Suppliers": { color: 'var(--status-pending)', backgroundColor: 'rgba(245, 158, 11, 0.1)', borderColor: 'var(--status-pending)' },
+                    "Supplier Selected": { color: 'var(--status-completed)', backgroundColor: 'rgba(59, 130, 246, 0.1)', borderColor: 'var(--status-completed)' },
+
+                    "RFQ Closed": { color: 'var(--status-cancelled)', backgroundColor: 'rgba(239, 68, 68, 0.1)', borderColor: 'var(--status-cancelled)' },
+                };
+                const rfqStatusStyle = rfqStatusStyles[value?.toLowerCase()] || { color: 'var(--text-secondary)', backgroundColor: 'var(--surface-hover)', borderColor: 'var(--border-default)' };
+                return (
+                    <span className="inline-flex justify-center px-2.5 py-0.5 text-xs font-medium border" style={rfqStatusStyle}>
                         {value}
                     </span>
                 );
@@ -349,7 +373,11 @@ export default function TableComponent({
                                     </tr>
                                 ) : (
                                     sortedData.map((row, i) => (
-                                        <tr key={i} className="transition-colors duration-150 hover:bg-surface-hover">
+                                        <tr
+                                            key={i}
+                                            className={`transition-colors duration-150 hover:bg-surface-hover ${onClickRow ? 'cursor-pointer' : ''}`}
+                                            onClick={() => onClickRow && onClickRow(row)}
+                                        >
                                             {columns.map(col => (
                                                 <td key={col.key} className="px-6 py-4 whitespace-nowrap text-sm">
                                                     {col.render
@@ -362,7 +390,10 @@ export default function TableComponent({
                                                 <div className="flex items-center justify-end gap-1">
                                                     {onEdit && (
                                                         <button
-                                                            onClick={() => onEdit(row)}
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                onEdit(row);
+                                                            }}
                                                             className="p-2 transition-colors rounded-none hover:text-brand-accent hover:bg-brand-accent/10"
                                                             style={{ color: 'var(--text-tertiary)' }}
                                                             title="Edit"
@@ -372,7 +403,10 @@ export default function TableComponent({
                                                     )}
                                                     {onDelete && (
                                                         <button
-                                                            onClick={() => onDelete(row)}
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                onDelete(row);
+                                                            }}
                                                             className="p-2 transition-colors rounded-none hover:text-brand-danger hover:bg-brand-danger/10"
                                                             style={{ color: 'var(--text-tertiary)' }}
                                                             title="Delete"

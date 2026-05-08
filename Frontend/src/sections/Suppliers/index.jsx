@@ -4,6 +4,9 @@ import NavBar from '../../components/layout/NavBar';
 import Drafts from './Drafts';
 import RFQList from './RFQList';
 
+import RFQDetails from '../../components/layout/RFQDetails';
+import UserDetails from '../../components/layout/UserDetails';
+
 export default function SuppliersDashboard() {
     const tabs = [
         { label: 'Drafts', path: 'Drafts' },
@@ -25,6 +28,9 @@ export default function SuppliersDashboard() {
                     <Route path="Drafts" element={<Drafts />} />
                     <Route path="RFQ-List" element={<RFQList />} />
 
+                    {/* Dynamic routes for details */}
+                    <Route path="rfq/:id" element={<RFQDetails />} />
+                    <Route path="user/:id" element={<UserDetails />} />
                 </Routes>
             </div>
         </div>

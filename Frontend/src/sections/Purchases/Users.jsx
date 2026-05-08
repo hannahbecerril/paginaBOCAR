@@ -1,10 +1,13 @@
 // sections/Users.jsx
+import { useNavigate } from 'react-router-dom';
 import TableComponent from '../../components/layout/TableComponent';
 
 export default function Users() {
+    const navigate = useNavigate();
+
     const users = [
         {
-            id: 1,
+            id: 'maria-garcia',
             name: 'Maria Garcia',
             email: 'maria@company.com',
             role: 'User',
@@ -12,7 +15,7 @@ export default function Users() {
             status: 'active'
         },
         {
-            id: 2,
+            id: 'carlos-lopez',
             name: 'Carlos Lopez',
             email: 'carlos@company.com',
             role: 'User',
@@ -20,7 +23,7 @@ export default function Users() {
             status: 'active'
         },
         {
-            id: 3,
+            id: 'ana-torres',
             name: 'Ana Torres',
             email: 'ana@company.com',
             role: 'User',
@@ -28,7 +31,7 @@ export default function Users() {
             status: 'inactive'
         },
         {
-            id: 4,
+            id: 'mario-garcia',
             name: 'Mario Garcia',
             email: 'mario@company.com',
             role: 'User',
@@ -45,12 +48,17 @@ export default function Users() {
         { key: 'status', label: 'Status', type: 'status', sortable: true, filterable: true },
     ];
 
+    const handleRowClick = (row) => {
+        navigate(`/Purchases/user/${row.id}`);
+    };
+
     return (
         <TableComponent
             title="User Management"
             subtitle="Manage system users"
             data={users}
             columns={columns}
+            onClickRow={handleRowClick}
             onAdd={() => alert('Add user')}
             onEdit={(row) => console.log('Edit', row)}
             onDelete={(row) => console.log('Delete', row)}
