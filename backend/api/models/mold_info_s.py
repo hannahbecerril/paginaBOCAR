@@ -1,10 +1,15 @@
 from django.db import models
-from .base import RFQ_Base
+from .base import RFQ_Base, Suppliers
 
 
 # ── MOLD_INFO_P1_S ────────────────────────────────────────────
 class MOLD_INFO_P1_S(models.Model):
-    id_rfq = models.OneToOneField(RFQ_Base, on_delete=models.CASCADE, related_name='mold_info_p1_s')
+    id_rfq = models.ForeignKey(
+        RFQ_Base, on_delete=models.CASCADE, related_name='mold_info_p1_s_rfq'
+    )
+    supplier = models.ForeignKey(
+        Suppliers, on_delete=models.PROTECT, related_name='mold_info_p1_s_supplier', null=True, blank=True
+    )
 
     # Material Cost - M1
     MatCst_M1_PrBd = models.FloatField(null=True, blank=True)
@@ -84,7 +89,11 @@ class MOLD_INFO_P1_S(models.Model):
 
 # ── MOLD_INFO_P2_S ───────────────────────────────────────────
 class MOLD_INFO_P2_S(models.Model):
-    id_rfq = models.ForeignKey(RFQ_Base, on_delete=models.CASCADE, related_name='mold_info_p2_s')
+
+    id_rfq = models.ForeignKey(RFQ_Base, on_delete=models.CASCADE, related_name='mold_info_p2_s_rfq')
+    supplier = models.ForeignKey(Suppliers, on_delete=models.PROTECT, related_name='mold_info_p2_s_supplier', null=True, blank=True)
+
+
     SUPP = models.CharField(max_length=255, blank=True)
     SIGN = models.CharField(max_length=255, blank=True)
     DATE = models.DateTimeField(null=True, blank=True)
