@@ -1,10 +1,18 @@
 from django.db import models
-from .base import RFQ_Base
+from .base import RFQ_Base, Suppliers
 
 
 # ── MOLD_COSTBR_I ───────────────────────────────────────────
 class MOLD_COSTBR_I(models.Model):
-    id_rfq = models.ForeignKey(RFQ_Base, on_delete=models.CASCADE, related_name='mold_costbr_i')
+ 
+    id_rfq = models.ForeignKey(
+        RFQ_Base, on_delete=models.CASCADE, related_name='mold_costbr_i_rfq'
+    )
+    supplier = models.ForeignKey(
+        Suppliers, on_delete=models.PROTECT, related_name='mold_costbr_i_supplier'
+    )
+
+
     Part_name = models.CharField(max_length=255, blank=True)
     Alloy = models.CharField(max_length=255, blank=True)
     Part_no = models.CharField(max_length=255, blank=True)

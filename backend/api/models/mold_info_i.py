@@ -1,10 +1,16 @@
 from django.db import models
-from .base import RFQ_Base
+from .base import RFQ_Base, Suppliers
 
 
 # ── MOLD_INFO_P1_I ───────────────────────────────────────────
 class MOLD_INFO_P1_I(models.Model):
-    id_rfq = models.OneToOneField(RFQ_Base, on_delete=models.CASCADE, related_name='mold_info_p1_i')
+    id_rfq = models.ForeignKey(
+        RFQ_Base, on_delete=models.CASCADE, related_name='mold_info_p1_i_rfq'
+    )
+    supplier = models.ForeignKey(
+        Suppliers, on_delete=models.PROTECT, related_name='mold_info_p1_i_supplier'
+    )
+
     DESC = models.CharField(max_length=255, blank=True)
     PPY = models.IntegerField(null=True, blank=True)
     CUST = models.CharField(max_length=255, blank=True)
@@ -42,7 +48,13 @@ class MOLD_INFO_P1_I(models.Model):
 
 # ── MOLD_INFO_P2_I ───────────────────────────────────────────
 class MOLD_INFO_P2_I(models.Model):
-    id_rfq = models.OneToOneField(RFQ_Base, on_delete=models.CASCADE, related_name='mold_info_p2_i')
+    id_rfq = models.ForeignKey(
+        RFQ_Base, on_delete=models.CASCADE, related_name='mold_info_p2_i_rfq'
+    )
+    supplier = models.ForeignKey(
+        Suppliers, on_delete=models.PROTECT, related_name='mold_info_p2_i_supplier'
+    )
+
     ThreeD = models.BooleanField(default=False)
     FlAn = models.BooleanField(default=False)
     Run_des = models.BooleanField(default=False)

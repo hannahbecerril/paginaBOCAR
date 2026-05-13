@@ -1,10 +1,16 @@
 from django.db import models
-from .base import RFQ_Base
+from .base import RFQ_Base, Suppliers
 
 
 # ── MOLD_CAVITIES_P1_S ───────────────────────────────────────
 class MOLD_CAVITIES_P1_S(models.Model):
-    id_rfq = models.ForeignKey(RFQ_Base, on_delete=models.CASCADE, related_name='mold_cavities_p1_s')
+
+    id_rfq = models.ForeignKey(
+        RFQ_Base, on_delete=models.CASCADE, related_name='mold_cavities_p1_s_rfq'
+    )
+    supplier = models.ForeignKey(
+        Suppliers, on_delete=models.PROTECT, related_name='mold_cavities_p1_s_supplier'
+    )
 
     # Jet Cooling
     JetCooling_Unit = models.FloatField(null=True, blank=True)
@@ -124,7 +130,13 @@ class MOLD_CAVITIES_P1_S(models.Model):
 
 # ── MOLD_CAVITIES_P2_S ───────────────────────────────────────
 class MOLD_CAVITIES_P2_S(models.Model):
-    id_rfq = models.ForeignKey(RFQ_Base, on_delete=models.CASCADE, related_name='mold_cavities_p2_s')
+ 
+    id_rfq = models.ForeignKey(
+        RFQ_Base, on_delete=models.CASCADE, related_name='mold_cavities_p2_s_rfq'
+    )
+    supplier = models.ForeignKey(
+        Suppliers, on_delete=models.PROTECT, related_name='mold_cavities_p2_s_supplier'
+    )
 
     # Assembly
     Assembly_h = models.FloatField(null=True, blank=True)
@@ -232,7 +244,13 @@ class MOLD_CAVITIES_P2_S(models.Model):
 
 # ── MOLD_CAVITIES_P3_S ───────────────────────────────────────
 class MOLD_CAVITIES_P3_S(models.Model):
-    id_rfq = models.ForeignKey(RFQ_Base, on_delete=models.CASCADE, related_name='mold_cavities_p3_s')
+
+    id_rfq = models.ForeignKey(
+        RFQ_Base, on_delete=models.CASCADE, related_name='mold_cavities_p3_s_rfq'
+    )
+    supplier = models.ForeignKey(
+        Suppliers, on_delete=models.PROTECT, related_name='mold_cavities_p3_s_supplier'
+    )
 
     # Measure Cavities
     MeasureCavities_H = models.FloatField(null=True, blank=True)

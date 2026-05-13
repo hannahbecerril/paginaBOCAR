@@ -1,10 +1,17 @@
 from django.db import models
-from .base import RFQ_Base
+from .base import RFQ_Base, Suppliers
 
 
 # ── DIE_TRIM_I ───────────────────────────────────────────────
 class DIE_TRIM_I(models.Model):
-    id_rfq = models.OneToOneField(RFQ_Base, on_delete=models.CASCADE, related_name='die_trim_i')
+    
+    id_rfq = models.ForeignKey(
+        RFQ_Base, on_delete=models.CASCADE, related_name='die_trim_i_rfq'
+    )
+    supplier = models.ForeignKey(
+        Suppliers, on_delete=models.PROTECT, related_name='die_trim_i_supplier'
+    )
+
 
     DESC = models.CharField(max_length=255, blank=True)
     PPY = models.CharField(max_length=255, blank=True)

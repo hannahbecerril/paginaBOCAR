@@ -53,24 +53,31 @@ class RFQ_Base(models.Model):
 
 # ── RFQ ASSIGNMENT ───────────────────────────────────────────
 class RFQ_Assignment(models.Model):
-    id_rfq = models.ForeignKey(RFQ_Base, on_delete=models.CASCADE, related_name='assignments')
-    supplier1 = models.CharField(max_length=255, blank=True)
-    supplier2 = models.CharField(max_length=255, blank=True)
-    supplier3 = models.CharField(max_length=255, blank=True)
-    supplier4 = models.CharField(max_length=255, blank=True)
-    supplier5 = models.CharField(max_length=255, blank=True)
-    supplier6 = models.CharField(max_length=255, blank=True)
-    supplier7 = models.CharField(max_length=255, blank=True)
-    supplier8 = models.CharField(max_length=255, blank=True)
-    supplier9 = models.CharField(max_length=255, blank=True)
-    supplier10 = models.CharField(max_length=255, blank=True)
+    id_rfq = models.ForeignKey(
+        RFQ_Base, on_delete=models.CASCADE, related_name='assignments'
+    )
+    supplier = models.ForeignKey(
+        'Suppliers', on_delete=models.PROTECT, related_name='rfq_assignments'
+    )
 
     class Meta:
         db_table = 'RFQ_Assignment'
+        unique_together = ('id_rfq', 'supplier')
 
     def __str__(self):
-        return f'Assignment RFQ {self.id_rfq}'
+        return f'RFQ {self.id_rfq} - {self.supplier.name}'
 
+# --- SUPPLIERS
+class Suppliers(models.Model):
+    name = models.CharField(max_length=255)
+    email = models.EmailField()
+    phone = models.CharField(max_length=20)
+
+    class Meta:
+        db_table = 'Suppliers'
+
+    def __str__(self):
+        return self.name
 
 # ── ATTACHMENTS ──────────────────────────────────────────────
 class Attachments(models.Model):
