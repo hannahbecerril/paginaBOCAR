@@ -10,7 +10,8 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.models import User
-
+from django.http import JsonResponse, FileResponse, Http404
+import os
 # 2. Django REST Framework y Terceros
 from rest_framework import filters, status, viewsets, generics
 from rest_framework.views import APIView
@@ -35,6 +36,83 @@ from .models import (
 
 User = get_user_model()
 
+
+class FalloFinalGerencialView(APIView):
+    """
+    Endpoint PATCH para que el SuperAdmin de Compras apruebe o rechace 
+    el fallo final (proveedor ganador) seleccionado por el comprador.
+    """
+    permission_classes = [IsAuthenticated, IsPurchasesAdmin]
+
+    @transaction.atomic
+    def patch(self, request, pk):
+        rfq_base = get_object_or_404(RFQ_Base, pk=pk)
+        status_rfq = get_object_or_404(Status_RFQ, id_rfq=rfq_base.id_rfq)
+        asignacion = get_object_or_404(RFQ_Assignment, id_rfq=rfq_base)
+
+        # Validar que estemos en Nivel 8 (Pendiente de Fallo Gerencial)
+        if not status_rfq.lev8:
+            return Response(
+                {"error": "El RFQ no está en espera de fallo gerencial (Nivel 8)."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        accion = request.data.get('accion', '').lower()
+
+        if accion == 'aprobar':
+            status_rfq.lev8 = False
+            status_rfq.lev9 = True
+            mensaje = "Fallo aprobado. La licitación ha sido cerrada y adjudicada (Nivel 9)."
+        
+        elif accion == 'rechazar':
+            status_rfq.lev8 = False
+            status_rfq.lev7 = True
+            # Borramos al candidato para obligar al comprador a elegir otro
+            asignacion.winning_supplier = None
+            asignacion.save()
+            mensaje = "Fallo rechazado. Se ha revocado al proveedor candidato y el RFQ regresa a análisis de cotizaciones (Nivel 7)."
+        
+        else:
+            return Response(
+                {"error": "Acción inválida. Usa 'aprobar' o 'rechazar'."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        status_rfq.save()
+
+        return Response({
+            "mensaje": mensaje,
+            "id_rfq": rfq_base.id_rfq,
+            "proveedor_ganador": asignacion.winning_supplier
+        }, status=status.HTTP_200_OK)
+
+
+class DescargarArchivoSeguroView(APIView):
+    """
+    Endpoint GET para descargar archivos físicos de forma segura.
+    Evita la exposición directa de las URLs en el servidor web.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        # Obtenemos el registro de la base de datos
+        archivo_obj = get_object_or_404(Archivo, pk=pk)
+        
+        if not archivo_obj.archivo:
+            raise Http404("El archivo no tiene una ruta física asociada.")
+
+        # Construimos la ruta absoluta del sistema operativo
+        file_path = archivo_obj.archivo.path
+        
+        if not os.path.exists(file_path):
+            raise Http404("El archivo no se encuentra en el servidor.")
+
+        # FileResponse maneja la transferencia en chunks, optimizando la memoria RAM
+        response = FileResponse(open(file_path, 'rb'))
+        # Forzamos la cabecera para que el navegador inicie la descarga con el nombre original
+        response['Content-Disposition'] = f'attachment; filename="{archivo_obj.nombre}"'
+        
+        return response
 class RFQAprobadosListView(generics.ListAPIView):
     serializer_class = RFQBaseSerializer
     permission_classes = [IsAuthenticated, IsPurchasesUser]

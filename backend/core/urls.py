@@ -4,10 +4,12 @@ from rest_framework.routers import DefaultRouter
 from api.views import (
     hola, ArchivoViewSet, LoginInternoView, LoginProveedorView, 
     ListarUsuariosView, CambiarEstadoUsuarioView, CrearUsuarioView,
+
     RFQAprobadosListView, ProveedorListView, AssignSuppliersRFQView, 
     CrearRFQView, EditarRFQView, CotizacionProveedorView, BuzonProveedorListView, 
     AprobarRechazarProveedoresView, RFQPendientesAprobacionComprasListView, ReviewRFQIndView, 
-    SelectWinningSupplierView
+    SelectWinningSupplierView, FalloFinalGerencialView, DescargarArchivoSeguroView,  
+
 )
 router = DefaultRouter()
 router.register(r'archivos', ArchivoViewSet)
@@ -19,6 +21,8 @@ urlpatterns = [
     path('api/usuarios/listar/', ListarUsuariosView.as_view(), name='listar_usuarios'),
     path('api/usuarios/<int:pk>/estado/', CambiarEstadoUsuarioView.as_view(), name='cambiar_estado_usuario'),
     path('api/usuarios/crear/', CrearUsuarioView.as_view(), name='crear_usuario'),
+    path('api/rfq/<int:pk>/fallo-gerencial/', FalloFinalGerencialView.as_view(), name='rfq-fallo-gerencial'),
+    path('api/archivos/<int:pk>/descargar/', DescargarArchivoSeguroView.as_view(), name='archivo-descargar'),
     path('rfqs/pendientes-compras/', RFQAprobadosListView.as_view(), name='rfqs-aprobados'),
     path('api/rfqs/pendientes-aprobacion-gerencia/', RFQPendientesAprobacionComprasListView.as_view(), name='rfqs-pendientes-gerencia'),
     path('rfq/crear/', CrearRFQView.as_view(), name='rfq-crear'),

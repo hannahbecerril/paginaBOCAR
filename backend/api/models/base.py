@@ -27,7 +27,8 @@ class Status_RFQ(models.Model):
     lev5 = models.BooleanField(default=False)
     lev6 = models.BooleanField(default=False)
     lev7 = models.BooleanField(default=False)
-    lev8 = models.BooleanField(default=False)
+    lev8 = models.BooleanField(default= False)
+    lev9 = models.BooleanField(default=False)
 
     class Meta:
         db_table = 'Status_RFQ'
