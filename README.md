@@ -82,7 +82,7 @@ http://127.0.0.1:8000/
 El backend expone endpoints REST que serán consumidos por el frontend:
 
 ```
-GET  /api/hola/
+
 GET  /api/archivos/
 POST /api/archivos/
 ```
