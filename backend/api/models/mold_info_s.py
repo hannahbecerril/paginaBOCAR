@@ -8,7 +8,7 @@ class MOLD_INFO_P1_S(models.Model):
         RFQ_Base, on_delete=models.CASCADE, related_name='mold_info_p1_s_rfq'
     )
     supplier = models.ForeignKey(
-        Suppliers, on_delete=models.PROTECT, related_name='mold_info_p1_s_supplier'
+        Suppliers, on_delete=models.PROTECT, related_name='mold_info_p1_s_supplier', null=True, blank=True
     )
 
     # Material Cost - M1
@@ -91,7 +91,7 @@ class MOLD_INFO_P1_S(models.Model):
 class MOLD_INFO_P2_S(models.Model):
 
     id_rfq = models.ForeignKey(RFQ_Base, on_delete=models.CASCADE, related_name='mold_info_p2_s_rfq')
-    supplier = models.ForeignKey(Suppliers, on_delete=models.PROTECT, related_name='mold_info_p2_s_supplier')
+    supplier = models.ForeignKey(Suppliers, on_delete=models.PROTECT, related_name='mold_info_p2_s_supplier', null=True, blank=True)
 
 
     SUPP = models.CharField(max_length=255, blank=True)

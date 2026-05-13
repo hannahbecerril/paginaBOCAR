@@ -9,8 +9,9 @@ class MOLD_CAVITIES_P1_S(models.Model):
         RFQ_Base, on_delete=models.CASCADE, related_name='mold_cavities_p1_s_rfq'
     )
     supplier = models.ForeignKey(
-        Suppliers, on_delete=models.PROTECT, related_name='mold_cavities_p1_s_supplier'
+        Suppliers, on_delete=models.PROTECT, related_name='mold_cavities_p1_s_supplier', null=True, blank=True
     )
+
 
     # Jet Cooling
     JetCooling_Unit = models.FloatField(null=True, blank=True)
@@ -135,7 +136,7 @@ class MOLD_CAVITIES_P2_S(models.Model):
         RFQ_Base, on_delete=models.CASCADE, related_name='mold_cavities_p2_s_rfq'
     )
     supplier = models.ForeignKey(
-        Suppliers, on_delete=models.PROTECT, related_name='mold_cavities_p2_s_supplier'
+        Suppliers, on_delete=models.PROTECT, related_name='mold_cavities_p2_s_supplier', null=True, blank=True
     )
 
     # Assembly
@@ -249,7 +250,7 @@ class MOLD_CAVITIES_P3_S(models.Model):
         RFQ_Base, on_delete=models.CASCADE, related_name='mold_cavities_p3_s_rfq'
     )
     supplier = models.ForeignKey(
-        Suppliers, on_delete=models.PROTECT, related_name='mold_cavities_p3_s_supplier'
+        Suppliers, on_delete=models.PROTECT, related_name='mold_cavities_p3_s_supplier', null=True, blank=True
     )
 
     # Measure Cavities

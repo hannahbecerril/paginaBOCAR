@@ -8,7 +8,7 @@ class MOLD_INFO_P1_I(models.Model):
         RFQ_Base, on_delete=models.CASCADE, related_name='mold_info_p1_i_rfq'
     )
     supplier = models.ForeignKey(
-        Suppliers, on_delete=models.PROTECT, related_name='mold_info_p1_i_supplier'
+        Suppliers, on_delete=models.PROTECT, related_name='mold_info_p1_i_supplier', null=True, blank=True
     )
 
     DESC = models.CharField(max_length=255, blank=True)
@@ -52,7 +52,7 @@ class MOLD_INFO_P2_I(models.Model):
         RFQ_Base, on_delete=models.CASCADE, related_name='mold_info_p2_i_rfq'
     )
     supplier = models.ForeignKey(
-        Suppliers, on_delete=models.PROTECT, related_name='mold_info_p2_i_supplier'
+        Suppliers, on_delete=models.PROTECT, related_name='mold_info_p2_i_supplier', null=True, blank=True
     )
 
     ThreeD = models.BooleanField(default=False)

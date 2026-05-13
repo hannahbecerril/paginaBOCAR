@@ -9,7 +9,7 @@ class DIE_COSTBR_P3_S(models.Model):
         RFQ_Base, on_delete=models.CASCADE, related_name='die_costbr_p3_s_rfq'
     )
     supplier = models.ForeignKey(
-        Suppliers, on_delete=models.PROTECT, related_name='die_costbr_p3_s_supplier'
+        Suppliers, on_delete=models.PROTECT, related_name='die_costbr_p3_s_supplier', null=True, blank=True
     )
 
     Hard_H = models.FloatField(max_length=255, blank=True)

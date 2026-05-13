@@ -9,7 +9,7 @@ class DIE_COSTBR_P4_S(models.Model):
         RFQ_Base, on_delete=models.CASCADE, related_name='die_costbr_p4_s_rfq'
     )
     supplier = models.ForeignKey(
-        Suppliers, on_delete=models.PROTECT, related_name='die_costbr_p4_s_supplier'
+        Suppliers, on_delete=models.PROTECT, related_name='die_costbr_p4_s_supplier', null=True, blank=True
     )
 
 

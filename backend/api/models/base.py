@@ -57,7 +57,7 @@ class RFQ_Assignment(models.Model):
         RFQ_Base, on_delete=models.CASCADE, related_name='assignments'
     )
     supplier = models.ForeignKey(
-        'Suppliers', on_delete=models.PROTECT, related_name='rfq_assignments'
+        'Suppliers', on_delete=models.PROTECT, related_name='rfq_assignments', null=True, blank=True
     )
 
     class Meta:

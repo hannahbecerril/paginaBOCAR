@@ -9,7 +9,7 @@ class DIE_TRIM_I(models.Model):
         RFQ_Base, on_delete=models.CASCADE, related_name='die_trim_i_rfq'
     )
     supplier = models.ForeignKey(
-        Suppliers, on_delete=models.PROTECT, related_name='die_trim_i_supplier'
+        Suppliers, on_delete=models.PROTECT, related_name='die_trim_i_supplier', null=True, blank=True
     )
 
 
