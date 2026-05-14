@@ -26,12 +26,15 @@ from .serializers import (
     ArchivoSerializer, UsuarioReadSerializer, UsuarioCreateSerializer,
     RFQBaseSerializer, ProveedorSerializer
 )
-from .models.base import RFQ_Assignment  # Lo mantenemos si no está en tu __init__.py de models
+from .models.base import RFQ_Assignment, Suppliers  # Lo mantenemos si no está en tu __init__.py de models
 from .models import (
     RFQ_Base, Status_RFQ, 
     MOLD_INFO_P1_I, MOLD_INFO_P2_I, DIE_TRIM_I,
+    MOLD_COSTBR_I, DIE_COSTBR_I,
     MOLD_COSTBR_P1_S, MOLD_COSTBR_P2_S, MOLD_COSTBR_P3_S, 
-    MOLD_COSTBR_P4_S, MOLD_COSTBR_P5_S,Archivo
+    MOLD_COSTBR_P4_S, MOLD_COSTBR_P5_S, Archivo,
+    DIE_COSTBR_P1_S, DIE_COSTBR_P2_S, DIE_COSTBR_P3_S, DIE_COSTBR_P4_S,
+
 )
 
 User = get_user_model()
@@ -136,74 +139,61 @@ class ProveedorListView(generics.ListAPIView):
 
 class AssignSuppliersRFQView(APIView):
     """
-    Endpoint para guardar temporalmente la selección de proveedores para un RFQ
-    y enviarla a autorización de gerencia (Superadmin Compras).
+    BACK: Selección y Guardado de Proveedores Candidatos
+    Guarda temporalmente la selección y la envía a gerencia (Nivel 5).
     """
     permission_classes = [IsAuthenticated, IsPurchasesUser]
 
     @transaction.atomic
     def put(self, request, pk):
-        # 1. Obtener el RFQ usando el nombre de modelo correcto (RFQ_Base)
         rfq = get_object_or_404(RFQ_Base, pk=pk)
-
-        # 2. Validar estado inicial exigido por el negocio
-        # NOTA: Debes ajustar esta lógica según qué nivel (lev1-lev8) corresponde a 'DRAFT_PUR'
         status_rfq, created = Status_RFQ.objects.get_or_create(id_rfq=rfq.id_rfq)
         
-        # Ejemplo: Si DRAFT_PUR es lev4
         if not status_rfq.lev4:
             return Response(
-                {"error": "El RFQ no se encuentra en borrador de compras."}, 
+                {"error": "El RFQ no se encuentra en borrador de compras (Nivel 4)."}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 3. Obtener el arreglo de IDs de proveedores enviados desde el Frontend
         proveedores_ids = request.data.get('proveedores_ids', [])
-        
         if not isinstance(proveedores_ids, list) or not proveedores_ids:
             return Response(
-                {"error": "Debes proporcionar un arreglo válido 'proveedores_ids' con al menos un proveedor."}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-            
-        # Como RFQ_Assignment solo soporta hasta 10 proveedores, agregamos esta validación
-        if len(proveedores_ids) > 10:
-            return Response(
-                {"error": "No puedes asignar más de 10 proveedores a un solo RFQ."}, 
+                {"error": "Debes proporcionar un arreglo válido 'proveedores_ids'."}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 4. Validar que los usuarios existen
-        proveedores_validos = User.objects.filter(id__in=proveedores_ids)
+        proveedores_validos = Suppliers.objects.filter(id__in=proveedores_ids)
         if proveedores_validos.count() != len(proveedores_ids):
             return Response(
-                {"error": "Uno o más IDs de proveedores no son válidos o no existen en el sistema."}, 
+                {"error": "Uno o más IDs de proveedores no son válidos."}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 5. Actualizar la relación en el modelo correcto (RFQ_Assignment)
-        asignacion, _ = RFQ_Assignment.objects.get_or_create(id_rfq=rfq)
-        
-        # Primero limpiamos los proveedores anteriores en caso de que sea una actualización
-        for i in range(1, 11):
-            setattr(asignacion, f'supplier{i}', '')
-            
-        # Asignamos los nuevos proveedores (guardando el ID como string en el CharField)
-        for index, proveedor in enumerate(proveedores_validos, start=1):
-            setattr(asignacion, f'supplier{index}', str(proveedor.id))
-            
-        asignacion.save()
+        # Actualización relacional masiva en RFQ_Assignment
+        RFQ_Assignment.objects.filter(id_rfq=rfq).delete()
+        nuevas_asignaciones = [
+            RFQ_Assignment(id_rfq=rfq, supplier=proveedor) 
+            for proveedor in proveedores_validos
+        ]
+        RFQ_Assignment.objects.bulk_create(nuevas_asignaciones)
 
-        # 6. Administrar la transición de estados
+        # Inicializar tablas técnicas (Mold vs Die)
+        if rfq.type == 'mold':
+            for proveedor in proveedores_validos:
+                MOLD_COSTBR_I.objects.get_or_create(id_rfq=rfq, supplier_id=proveedor.id)
+        elif rfq.type == 'die':
+            for proveedor in proveedores_validos:
+                DIE_COSTBR_I.objects.get_or_create(id_rfq=rfq, supplier_id=proveedor.id)
+
         status_rfq.lev4 = False
         status_rfq.lev5 = True
         status_rfq.save()
 
-        return Response({
-            "message": "Proveedores guardados exitosamente. RFQ enviado a autorización de gerencia.",
-            "rfq_id": rfq.id_rfq
+        return Response({ 
+            "message": f"Proveedores guardados para el RFQ {rfq.id_rfq}. Enviado a gerencia.",
+            "cantidad_proveedores": proveedores_validos.count()
         }, status=status.HTTP_200_OK)
-    
+
 class LoginInternoView(APIView):
     def post(self, request):
         username = request.data.get('username')
@@ -540,18 +530,16 @@ class EditarRFQView(APIView):
         
 class CotizacionProveedorView(APIView):
     """
-    Endpoint para que el proveedor guarde su cotización en borrador (DRAFT_SUP)
-    o la envíe oficialmente (SUBMITTED) a la licitación
+    Endpoint para que el proveedor envíe su cotización técnica y económica.
+    (Soporta 'mold' y 'die')
     """
     permission_classes = [IsAuthenticated]
 
     @transaction.atomic
     def post(self, request, pk):
-        # 1. Obtengo el RFQ y su estado
         rfq_base = get_object_or_404(RFQ_Base, pk=pk)
         status_rfq, created = Status_RFQ.objects.get_or_create(id_rfq=rfq_base.id_rfq)
 
-        # 2. Verifico que el RFQ está en Nivel 6 (enviado a proveedores)
         if not status_rfq.lev6:
             return Response(
                 {"error": "El RFQ no está habilitado para recibir cotizaciones o ya fue procesado."},
@@ -560,124 +548,118 @@ class CotizacionProveedorView(APIView):
 
         data = request.data
         is_draft = data.get('is_draft', True)
-        
-        # Obtenemos el username del usuario autenticado (el proveedor) para usarlo de llave única
         proveedor_identificador = request.user.username 
 
         try:
-            # 3. Extraigo los bloques de datos y actualizo/creo los registros en las 5 tablas
             if rfq_base.type == 'mold':
-                
-                # Parte 1: Generales y Accesorios
-                cost_p1_data = data.get('mold_cost_p1', {})
-                if cost_p1_data:
-                    # Inyectamos de forma forzada quién lo elaboró
-                    cost_p1_data['Elaborated_by'] = proveedor_identificador
-                    
-                    MOLD_COSTBR_P1_S.objects.update_or_create(
-                        id_rfq=rfq_base, 
-                        Elaborated_by=proveedor_identificador, 
-                        defaults=cost_p1_data
-                    )
+                bloques = [
+                    ('mold_cost_p1', MOLD_COSTBR_P1_S), ('mold_cost_p2', MOLD_COSTBR_P2_S),
+                    ('mold_cost_p3', MOLD_COSTBR_P3_S), ('mold_cost_p4', MOLD_COSTBR_P4_S),
+                    ('mold_cost_p5', MOLD_COSTBR_P5_S)
+                ]
+                for key, model in bloques:
+                    cost_data = data.get(key, {})
+                    if cost_data:
+                        cost_data['Elaborated_by'] = proveedor_identificador
+                        model.objects.update_or_create(
+                            id_rfq=rfq_base, Elaborated_by=proveedor_identificador, defaults=cost_data
+                        )
 
-                # Parte 2: Materiales y Maquinado
-                cost_p2_data = data.get('mold_cost_p2', {})
-                if cost_p2_data:
-                    MOLD_COSTBR_P2_S.objects.update_or_create(
-                        id_rfq=rfq_base, 
-                        Elaborated_by=proveedor_identificador, 
-                        defaults=cost_p2_data
-                    )
+            elif rfq_base.type == 'die':
+                bloques_die = [
+                    ('die_cost_p1', DIE_COSTBR_P1_S), ('die_cost_p2', DIE_COSTBR_P2_S),
+                    ('die_cost_p3', DIE_COSTBR_P3_S), ('die_cost_p4', DIE_COSTBR_P4_S)
+                ]
+                for key, model in bloques_die:
+                    cost_data = data.get(key, {})
+                    if cost_data:
+                        cost_data['Elaborated_by'] = proveedor_identificador
+                        model.objects.update_or_create(
+                            id_rfq=rfq_base, Elaborated_by=proveedor_identificador, defaults=cost_data
+                        )
 
-                # Parte 3: Tratamientos, Ingeniería y Simulación
-                cost_p3_data = data.get('mold_cost_p3', {})
-                if cost_p3_data:
-                    MOLD_COSTBR_P3_S.objects.update_or_create(
-                        id_rfq=rfq_base, 
-                        Elaborated_by=proveedor_identificador, 
-                        defaults=cost_p3_data
-                    )
-
-                # Parte 4: Mediciones, Correcciones y Logística
-                cost_p4_data = data.get('mold_cost_p4', {})
-                if cost_p4_data:
-                    MOLD_COSTBR_P4_S.objects.update_or_create(
-                        id_rfq=rfq_base, 
-                        Elaborated_by=proveedor_identificador, 
-                        defaults=cost_p4_data
-                    )
-
-                # Parte 5: Mejoras, Tryouts y Refacciones
-                cost_p5_data = data.get('mold_cost_p5', {})
-                if cost_p5_data:
-                    MOLD_COSTBR_P5_S.objects.update_or_create(
-                        id_rfq=rfq_base, 
-                        Elaborated_by=proveedor_identificador, 
-                        defaults=cost_p5_data
-                    )
-
-            # 4. Máquina de estados y eventos
             if is_draft:
-                estado_msg = "Cotización guardada como borrador local (Nivel 6)."
+                estado_msg = "Cotización guardada como borrador (Nivel 6)."
             else:
-                # Transición a SUBMITTED (Nivel 7: respondido por proveedores)
                 status_rfq.lev6 = False
                 status_rfq.lev7 = True
                 status_rfq.save()
-
-                # Disparo el evento de notificación interna
                 self._notificar_entrega(rfq_base.id_rfq)
                 estado_msg = "Cotización enviada oficialmente para revisión (Nivel 7)."
 
-            return Response({
-                "mensaje": estado_msg,
-                "id_rfq": rfq_base.id_rfq
-            }, status=status.HTTP_200_OK)
+            return Response({"mensaje": estado_msg, "id_rfq": rfq_base.id_rfq}, status=status.HTTP_200_OK)
 
-        except TypeError as e:
-            return Response({"error": f"Error de estructura de datos: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def _notificar_entrega(self, id_rfq):
-        # Aquí eventualmente pondremos la lógica para enviar el email
-        print(f"EVENTO DE SISTEMA: La cotización para el RFQ {id_rfq} ha sido entregada. Notificando a Compras e Industrialización")
+        print(f"EVENTO: La cotización para el RFQ {id_rfq} ha sido entregada.")
 
+class ComparativaCotizacionesView(APIView):
+    """
+    Historia 1: Análisis de Cotizaciones Recibidas.
+    Permite al comprador comparar todas las ofertas económicas de un RFQ.
+    """
+    permission_classes = [IsAuthenticated, IsPurchasesUser]
+
+    def get(self, request, pk):
+        rfq = get_object_or_404(RFQ_Base, pk=pk)
+        status_rfq = get_object_or_404(Status_RFQ, id_rfq=rfq.id_rfq)
+
+        if not status_rfq.lev7:
+            return Response(
+                {"error": "El RFQ no está en fase de análisis (Nivel 7)."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if rfq.type == 'mold':
+            modelos = [MOLD_COSTBR_P1_S, MOLD_COSTBR_P2_S, MOLD_COSTBR_P3_S, MOLD_COSTBR_P4_S, MOLD_COSTBR_P5_S]
+            proveedores_ids = MOLD_COSTBR_P1_S.objects.filter(id_rfq=rfq).values_list('Elaborated_by', flat=True)
+        else:
+            modelos = [DIE_COSTBR_P1_S, DIE_COSTBR_P2_S, DIE_COSTBR_P3_S, DIE_COSTBR_P4_S]
+            proveedores_ids = DIE_COSTBR_P1_S.objects.filter(id_rfq=rfq).values_list('Elaborated_by', flat=True)
+
+        resultado = []
+        for username in proveedores_ids:
+            user_obj = User.objects.filter(username=username).first()
+            oferta = {
+                "proveedor": f"{user_obj.first_name} {user_obj.last_name}".strip() if user_obj else username,
+                "datos": {f"parte_{i+1}": m.objects.filter(id_rfq=rfq, Elaborated_by=username).values().first() 
+                          for i, m in enumerate(modelos)}
+            }
+            resultado.append(oferta)
+
+        return Response({"id_rfq": rfq.id_rfq, "tipo": rfq.type, "comparativa": resultado}, status=status.HTTP_200_OK)
+        
 class BuzonProveedorListView(generics.ListAPIView):
     """
-    Endpoint: Buzón de RFQs asignadas para el Proveedor.
-    Retorna exclusivamente los RFQs donde el status esté en lev6 (enviado a proveedores)
-    y el request.user esté asignado en la tabla RFQ_Assignment.
+    BACK: Buzón de RFQS Asignadas para el Proveedor
+    Retorna exclusivamente los RFQs en estado PUBLISHED_TO_SUPPLIERS (lev6)
+    donde el request.user esté asignado.
     """
-    serializer_class = RFQBaseSerializer
-    permission_classes = [IsAuthenticated,IsSupplier]
+    # Asegúrate de tener RFQBaseSerializer importado
+    serializer_class = RFQBaseSerializer 
+    permission_classes = [IsAuthenticated, IsSupplier]
 
     def get_queryset(self):
-        user_id_str = str(self.request.user.id)
+        # Usamos el ID del usuario logueado (el proveedor que hace la petición)
+        proveedor_id = self.request.user.id
 
-        # 1. Encontrar en qué RFQs está invitado el usuario actual
-        asignaciones = RFQ_Assignment.objects.filter(
-            Q(supplier1=user_id_str) |
-            Q(supplier2=user_id_str) |
-            Q(supplier3=user_id_str) |
-            Q(supplier4=user_id_str) |
-            Q(supplier5=user_id_str) |
-            Q(supplier6=user_id_str) |
-            Q(supplier7=user_id_str) |
-            Q(supplier8=user_id_str) |
-            Q(supplier9=user_id_str) |
-            Q(supplier10=user_id_str)
+        # 1. Encontrar los IDs de los RFQs donde este proveedor fue invitado
+        # Buscamos directamente en la tabla relacional RFQ_Assignment
+        asignaciones_ids = RFQ_Assignment.objects.filter(
+            supplier_id=proveedor_id
         ).values_list('id_rfq', flat=True)
 
-        # 2. De esas asignaciones, filtrar solo las que estén en estado lev6 (PUBLISHED_TO_SUPPLIERS)
-        rfqs_publicados = Status_RFQ.objects.filter(
-            id_rfq__in=asignaciones,
+        # 2. Validar estados: De esas asignaciones, filtrar SOLO las que estén en Nivel 6
+        rfqs_publicados_ids = Status_RFQ.objects.filter(
+            id_rfq__in=asignaciones_ids,
             lev6=True
         ).values_list('id_rfq', flat=True)
 
-        # 3. Retornar la consulta final con la información base del RFQ
-        return RFQ_Base.objects.filter(id_rfq__in=rfqs_publicados)
-    
+        # 3. Retornar la consulta final con la información del RFQ_Base
+        return RFQ_Base.objects.filter(id_rfq__in=rfqs_publicados_ids)
+
 class AprobarRechazarProveedoresView(APIView):
     """
     Endpoint PATCH para que el SuperAdmin de Compras apruebe o rechace 
@@ -808,7 +790,6 @@ class SelectWinningSupplierView(APIView):
         # 1. Obtener RFQ, Estado y Asignaciones
         rfq_base = get_object_or_404(RFQ_Base, pk=pk)
         status_rfq = get_object_or_404(Status_RFQ, id_rfq=rfq_base.id_rfq)
-        asignacion = get_object_or_404(RFQ_Assignment, id_rfq=rfq_base)
 
         # 2. Validar que estemos en Nivel 7 (Respondido por proveedor)
         if not status_rfq.lev7:
@@ -819,36 +800,23 @@ class SelectWinningSupplierView(APIView):
 
         # 3. Obtener el ID enviado en la petición
         proveedor_id = request.data.get('proveedor_id')
-        if not proveedor_id:
+        if not asignacion:
             return Response(
                 {"error": "Se requiere el campo 'proveedor_id' en el cuerpo de la petición."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 4. Validar que el proveedor haya sido invitado (que esté entre supplier1 y supplier10)
-        proveedores_invitados = [
-            asignacion.supplier1, asignacion.supplier2, asignacion.supplier3,
-            asignacion.supplier4, asignacion.supplier5, asignacion.supplier6,
-            asignacion.supplier7, asignacion.supplier8, asignacion.supplier9,
-            asignacion.supplier10
-        ]
-        
-        if str(proveedor_id) not in proveedores_invitados:
-            return Response(
-                {"error": "El proveedor seleccionado no forma parte de la lista de invitados a esta licitación."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # 5. Guardar al ganador
-        asignacion.winning_supplier = str(proveedor_id)
+        # 5. Limpiar posibles ganadores previos (por si el comprador cambia de decisión antes de aprobar)
+        RFQ_Assignment.objects.filter(id_rfq=rfq_base, is_winner=True).update(is_winner=False)
+        asignacion.is_winner = True
         asignacion.save()
 
-        # 6. Actualizar la máquina de estados a Nivel 8 (Pendiente de Fallo Gerencial)
+        # 7. Actualizar la máquina de estados a Nivel 8 (Pendiente de Fallo Gerencial)
         status_rfq.lev7 = False
         status_rfq.lev8 = True
         status_rfq.save()
 
         return Response({
-            "mensaje": f"Proveedor {proveedor_id} marcado como ganador virtual. RFQ enviado a validación gerencial (Nivel 8).",
+            "mensaje": f"Proveedor marcado como ganador virtual. RFQ enviado a validación gerencial (Nivel 8).",
             "id_rfq": rfq_base.id_rfq
         }, status=status.HTTP_200_OK)

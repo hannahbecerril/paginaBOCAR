@@ -4,7 +4,6 @@ from rest_framework.routers import DefaultRouter
 from api.views import (
     hola, ArchivoViewSet, LoginInternoView, LoginProveedorView, 
     ListarUsuariosView, CambiarEstadoUsuarioView, CrearUsuarioView,
-
     RFQAprobadosListView, ProveedorListView, AssignSuppliersRFQView, 
     CrearRFQView, EditarRFQView, CotizacionProveedorView, BuzonProveedorListView, 
     AprobarRechazarProveedoresView, RFQPendientesAprobacionComprasListView, ReviewRFQIndView, 
@@ -35,4 +34,5 @@ urlpatterns = [
     path('api/rfq/buzon-proveedor/', BuzonProveedorListView.as_view(), name='rfq-buzon-proveedor'),
     path('api/rfq/<int:pk>/revision-ind/', ReviewRFQIndView.as_view(), name='rfq-revision-ind'),
     path('api/rfq/<int:pk>/seleccionar-proveedor/', SelectWinningSupplierView.as_view(), name='rfq-seleccionar-proveedor'),
+    path('rfq/<int:pk>/comparativa/', ComparativaCotizacionesView.as_view(), name='rfq-comparativa'),
 ]

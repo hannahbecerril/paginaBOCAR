@@ -60,6 +60,8 @@ class RFQ_Assignment(models.Model):
     supplier = models.ForeignKey(
         'Suppliers', on_delete=models.PROTECT, related_name='rfq_assignments', null=True, blank=True
     )
+    
+    is_winner = models.BooleanField(default=False)
 
     class Meta:
         db_table = 'RFQ_Assignment'
