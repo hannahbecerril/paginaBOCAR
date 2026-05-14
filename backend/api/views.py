@@ -722,14 +722,13 @@ class RFQPendientesAprobacionComprasListView(generics.ListAPIView):
 class ReviewRFQIndView(APIView):
     """
     Endpoint: Aprobación o Rechazo de RFQs por el SuperAdmin de Industrialización.
-    Método: PATCH
-    Cuerpo esperado: {"is_approved": true} o {"is_approved": false}
+    Soporta validación de integridad para tipos 'mold' y 'die'.
     """
     permission_classes = [IsAuthenticated]
 
     @transaction.atomic
     def patch(self, request, pk):
-        # 1. Validación de Permisos: Solo Industrialization_Admin o SuperAdmin pueden hacer esto
+        # 1. Validación de Permisos
         grupos_usuario = request.user.groups.values_list('name', flat=True)
         if 'Industrialization_Admin' not in grupos_usuario and 'SuperAdmin' not in grupos_usuario:
             return Response(
@@ -741,30 +740,41 @@ class ReviewRFQIndView(APIView):
         rfq_base = get_object_or_404(RFQ_Base, pk=pk)
         status_rfq = get_object_or_404(Status_RFQ, id_rfq=rfq_base.id_rfq)
 
-        # 3. Validar que el RFQ esté en Nivel 3 (Pendiente de revisión)
+        # 3. Validar fase actual (Nivel 3: Pendiente de revisión)
         if not status_rfq.lev3:
             return Response(
-                {"error": "El RFQ no está en estado pendiente de revisión (Nivel 3). Solo se pueden revisar RFQs enviados por el equipo."},
+                {"error": "El RFQ no está en estado pendiente de revisión (Nivel 3)."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 4. Obtener la decisión del cuerpo de la petición
         is_approved = request.data.get('is_approved')
         if is_approved is None:
             return Response(
-                {"error": "Se requiere el campo 'is_approved' (booleano) en el cuerpo de la petición."},
+                {"error": "Se requiere el campo 'is_approved' (booleano)."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 5. Máquina de Estados: Aprobar o Rechazar
-        # Convertimos a booleano seguro por si el frontend lo manda como string
+        # 4. Lógica de Aprobación con validación de tipo
         if str(is_approved).lower() in ['true', '1', 't', 'y', 'yes']:
-            # APROBADO -> Pasa a Nivel 4 (Enviado a Compras)
+            
+            # Verificación de integridad según el tipo de RFQ
+            if rfq_base.type == 'mold':
+                # Verifica que existan registros en las tablas de moldes
+                if not MOLD_INFO_P1_I.objects.filter(id_rfq=rfq_base).exists():
+                    return Response({"error": "No se puede aprobar: Faltan datos técnicos del Molde (P1)."}, status=status.HTTP_400_BAD_REQUEST)
+            
+            elif rfq_base.type == 'die':
+                # Verifica que existan registros en las tablas de troqueles (Die)
+                if not DIE_TRIM_I.objects.filter(id_rfq=rfq_base).exists():
+                    return Response({"error": "No se puede aprobar: Faltan datos técnicos del Troquel (Die)."}, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Transición a Nivel 4 (Enviado a Compras)
             status_rfq.lev3 = False
             status_rfq.lev4 = True
             estado_msg = "APPROVED_BY_IND (Aprobado y transferido a Compras)"
+        
         else:
-            # RECHAZADO -> Regresa a Nivel 2 (Borrador para que el equipo lo corrija)
+            # RECHAZADO -> Regresa a Nivel 2 (Borrador para corrección)
             status_rfq.lev3 = False
             status_rfq.lev2 = True
             estado_msg = "DRAFT_IND (Rechazado, regresó a edición)"
@@ -772,7 +782,7 @@ class ReviewRFQIndView(APIView):
         status_rfq.save()
 
         return Response({
-            "mensaje": f"RFQ {rfq_base.id_rfq} evaluado correctamente.",
+            "mensaje": f"RFQ {rfq_base.id_rfq} ({rfq_base.type}) evaluado correctamente.",
             "id_rfq": rfq_base.id_rfq,
             "estado_actual": estado_msg
         }, status=status.HTTP_200_OK)
@@ -806,7 +816,7 @@ class SelectWinningSupplierView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 5. Limpiar posibles ganadores previos (por si el comprador cambia de decisión antes de aprobar)
+        # 4. Limpiar posibles ganadores previos (por si el comprador cambia de decisión antes de aprobar)
         RFQ_Assignment.objects.filter(id_rfq=rfq_base, is_winner=True).update(is_winner=False)
         asignacion.is_winner = True
         asignacion.save()

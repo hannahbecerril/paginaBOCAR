@@ -7,7 +7,7 @@ from api.views import (
     RFQAprobadosListView, ProveedorListView, AssignSuppliersRFQView, 
     CrearRFQView, EditarRFQView, CotizacionProveedorView, BuzonProveedorListView, 
     AprobarRechazarProveedoresView, RFQPendientesAprobacionComprasListView, ReviewRFQIndView, 
-    SelectWinningSupplierView, FalloFinalGerencialView, DescargarArchivoSeguroView,  
+    SelectWinningSupplierView, FalloFinalGerencialView, DescargarArchivoSeguroView, ComparativaCotizacionesView
 
 )
 router = DefaultRouter()
