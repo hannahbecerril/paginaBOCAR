@@ -72,7 +72,18 @@ export default function Login({ onLogin }) {
     <div className="flex h-screen w-full">
       {/* LEFT PANEL - Branding */}
       <div className="hidden md:flex md:w-2/5 lg:w-[42%] relative flex-col justify-between p-10 overflow-hidden" style={{ backgroundColor: '#0f2742' }}>
-        {/* Background Pattern */}
+        {/* Background Video with Fallback Gradient */}
+        <video
+          className="absolute inset-0 w-full h-full object-cover opacity-75"
+          autoPlay
+          muted
+          loop
+          onError={(e) => {
+            e.target.style.display = 'none';
+          }}
+        >
+          <source src="BOCAR_video.mp4" type="video/mp4" />
+        </video>
         <div className="absolute inset-0 opacity-20"
           style={{
             background: `
@@ -84,18 +95,9 @@ export default function Login({ onLogin }) {
 
         {/* Logo Section */}
         <div className="relative z-10">
-          <div className="flex items-center gap-3 text-white">
-            <div className="w-10 h-10 bg-white/10 border border-white/20 flex items-center justify-center">
-              <div className="grid grid-cols-2 gap-[2px]">
-                <div className="w-2.5 h-2.5 bg-white" />
-                <div className="w-2.5 h-2.5 bg-white" />
-                <div className="w-2.5 h-2.5 bg-white" />
-                <div className="w-2.5 h-2.5 bg-white" />
-              </div>
-            </div>
-            <div>
-              <p className="text-xs font-semibold tracking-wider text-white">CHATIZA CORP</p>
-              <p className="text-[10px] text-white/50">Industrial Management</p>
+          <div className="flex flex-col items-start gap-3 text-white">
+            <div className="w-60 flex items-center justify-center rounded">
+              <img src="BOCAR_logoLight.png" alt="BOCAR Logo" />
             </div>
           </div>
         </div>
