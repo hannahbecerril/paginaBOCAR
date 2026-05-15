@@ -44,40 +44,47 @@ class FalloFinalGerencialView(APIView):
     """
     Endpoint PATCH para que el SuperAdmin de Compras apruebe o rechace 
     el fallo final (proveedor ganador) seleccionado por el comprador.
+    Maneja la lógica para ambos tipos de herramientas (moldes y troqueles).
     """
     permission_classes = [IsAuthenticated, IsPurchasesAdmin]
 
     @transaction.atomic
     def patch(self, request, pk):
+        # 1. Obtención de objetos base
         rfq_base = get_object_or_404(RFQ_Base, pk=pk)
         status_rfq = get_object_or_404(Status_RFQ, id_rfq=rfq_base.id_rfq)
         asignacion = get_object_or_404(RFQ_Assignment, id_rfq=rfq_base)
 
-        # Validar que estemos en Nivel 8 (Pendiente de Fallo Gerencial)
+        # 2. Validación de la Máquina de Estados (Debe estar en Nivel 8)
         if not status_rfq.lev8:
             return Response(
-                {"error": "El RFQ no está en espera de fallo gerencial (Nivel 8)."},
+                {"error": f"El RFQ {rfq_base.id_rfq} no se encuentra en espera de fallo gerencial (Nivel 8)."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
         accion = request.data.get('accion', '').lower()
+        rfq_type_label = "Molde" if rfq_base.type == 'mold' else "Troquel"
 
         if accion == 'aprobar':
+            # Transición: Nivel 8 -> Nivel 9 (Licitación Cerrada / Adjudicada)
             status_rfq.lev8 = False
             status_rfq.lev9 = True
-            mensaje = "Fallo aprobado. La licitación ha sido cerrada y adjudicada (Nivel 9)."
+            mensaje = f"Fallo aprobado exitosamente. El {rfq_type_label} ha sido adjudicado y la licitación está cerrada (Nivel 9)."
         
         elif accion == 'rechazar':
+            # Transición: Regresa a Nivel 7 (Análisis de cotizaciones)
             status_rfq.lev8 = False
             status_rfq.lev7 = True
-            # Borramos al candidato para obligar al comprador a elegir otro
+            
+            # Limpieza del candidato: Según el requerimiento, borramos al ganador
+            # para que el comprador deba elegir uno nuevo.
             asignacion.winning_supplier = None
             asignacion.save()
-            mensaje = "Fallo rechazado. Se ha revocado al proveedor candidato y el RFQ regresa a análisis de cotizaciones (Nivel 7)."
+            mensaje = f"Fallo rechazado. Se ha revocado la selección del proveedor y el {rfq_type_label} regresa a análisis de cotizaciones (Nivel 7)."
         
         else:
             return Response(
-                {"error": "Acción inválida. Usa 'aprobar' o 'rechazar'."},
+                {"error": "Acción inválida. Los valores permitidos son 'aprobar' o 'rechazar'."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -86,10 +93,9 @@ class FalloFinalGerencialView(APIView):
         return Response({
             "mensaje": mensaje,
             "id_rfq": rfq_base.id_rfq,
+            "tipo": rfq_base.type,
             "proveedor_ganador": asignacion.winning_supplier
         }, status=status.HTTP_200_OK)
-
-
 class DescargarArchivoSeguroView(APIView):
     """
     Endpoint GET para descargar archivos físicos de forma segura.
@@ -117,16 +123,44 @@ class DescargarArchivoSeguroView(APIView):
         
         return response
 class RFQAprobadosListView(generics.ListAPIView):
+    """
+    Endpoint GET que devuelve los RFQ aprobados por Ind (Nivel 4).
+    La lógica de enrutamiento a tablas técnicas se maneja directamente aquí.
+    """
     serializer_class = RFQBaseSerializer
     permission_classes = [IsAuthenticated, IsPurchasesUser]
 
     def get_queryset(self):
-        # 1. Buscamos los IDs de los RFQ que tengan el nivel correspondiente en True (ej. lev2)
-        rfq_aprobados_ids = Status_RFQ.objects.filter(lev4=True).values_list('id_rfq', flat=True)
-        
-        # 2. Filtramos la tabla base usando esos IDs
-        return RFQ_Base.objects.filter(id_rfq__in=rfq_aprobados_ids)
+        # Filtramos los IDs que ya pasaron la aprobación de Industrialización
+        rfqs_aprobados_ids = Status_RFQ.objects.filter(lev4=True).values_list('id_rfq', flat=True)
+        return RFQ_Base.objects.filter(id_rfq__in=rfqs_aprobados_ids)
 
+    def list(self, request, *args, **kwargs):
+        # 1. Ejecutamos la lógica estándar de ListAPIView para obtener los datos base
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        data = serializer.data  # Esto es una lista de diccionarios
+
+        # 2. Iteramos sobre cada RFQ serializado para inyectar información extra
+        for item in data:
+            rfq_id = item.get('id_rfq')
+            rfq_type = item.get('type')
+
+            if rfq_type == 'mold':
+                # Consultamos la tabla de moldes
+                detalles = MOLD_INFO_P1_I.objects.filter(id_rfq_id=rfq_id).values().first()
+                item['detalles_tecnicos'] = detalles if detalles else {}
+            
+            elif rfq_type == 'die':
+                # Consultamos la tabla de troqueles
+                detalles = DIE_TRIM_I.objects.filter(id_rfq_id=rfq_id).values().first()
+                item['detalles_tecnicos'] = detalles if detalles else {}
+            
+            else:
+                item['detalles_tecnicos'] = {}
+
+        # 3. Retornamos la respuesta modificada manualmente
+        return Response(data)
 class ProveedorListView(generics.ListAPIView):
     serializer_class = ProveedorSerializer
     permission_classes = [IsAuthenticated,IsPurchasesUser]
@@ -423,10 +457,12 @@ class CrearRFQView(APIView):
                 type=rfq_type
             )
 
+            # Corrección de la máquina de estados
             Status_RFQ.objects.create(
                 id_rfq=rfq_base.id_rfq,
                 lev1=True, 
-                lev2=not is_draft
+                lev2=is_draft,        # True si es borrador
+                lev3=not is_draft     # True si se envía definitivo
             )
 
             if rfq_type == 'mold':
@@ -445,7 +481,7 @@ class CrearRFQView(APIView):
             else:
                 raise ValueError("El tipo de RFQ es inválido. Debe ser 'mold' o 'die'.")
 
-            estado_msg = "DRAFT_IND" if is_draft else "PENDING_IND_APPROVAL"
+            estado_msg = "DRAFT_IND (Nivel 2)" if is_draft else "PENDING_IND_APPROVAL (Nivel 3)"
             
             return Response({
                 "mensaje": f"RFQ {rfq_base.id_rfq} guardado exitosamente como {estado_msg}.",
@@ -457,17 +493,15 @@ class CrearRFQView(APIView):
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         
+
 class EditarRFQView(APIView):
     permission_classes = [IsAuthenticated, IsIndUser]
 
     @transaction.atomic
     def put(self, request, pk):
-        # 1. Obtenemos los registros existentes
         rfq_base = get_object_or_404(RFQ_Base, pk=pk)
         status_rfq = get_object_or_404(Status_RFQ, id_rfq=rfq_base.id_rfq)
 
-        # 2. Validación crítica de negocio: 
-        # Si ya se envió a proveedores (Nivel 6), bloqueamos cualquier edición.
         if status_rfq.lev6:
             return Response(
                 {"error": "Edición bloqueada. El RFQ ya fue enviado a los proveedores."}, 
@@ -478,45 +512,41 @@ class EditarRFQView(APIView):
         is_draft = data.get('is_draft', True)
 
         try:
-            # 3. Actualizamos la tabla base si vienen esos datos
             if 'tool' in data:
                 rfq_base.tool = data['tool']
             if 'type' in data:
                 rfq_base.type = data['type']
             rfq_base.save()
 
-            # 4. Máquina de estados
+            # Máquina de estados consistente
             if is_draft:
-                # Si lo guardan como borrador, se queda en edición (Nivel 2)
                 status_rfq.lev2 = True
                 status_rfq.lev3 = False
                 status_rfq.lev4 = False
             else:
-                # Si lo envían definitivo, pasa a revisión del SuperAdmin de Ind. (Nivel 3)
                 status_rfq.lev2 = False
                 status_rfq.lev3 = True
-                status_rfq.lev4 = False # Compras dejará de verlo temporalmente hasta que se apruebe
+                status_rfq.lev4 = False
                 
             status_rfq.save()
 
-            # 5. Actualización dinámica de las tablas técnicas
-            # Usamos .update() para que modifique los campos masivamente en una sola instrucción
+            # Uso de update_or_create para manejar guardados parciales sin perder referencias
             rfq_type = rfq_base.type
             if rfq_type == 'mold':
                 mold_p1_data = data.get('mold_info_p1', {})
                 if mold_p1_data:
-                    MOLD_INFO_P1_I.objects.filter(id_rfq=rfq_base).update(**mold_p1_data)
+                    MOLD_INFO_P1_I.objects.update_or_create(id_rfq=rfq_base, defaults=mold_p1_data)
 
                 mold_p2_data = data.get('mold_info_p2', {})
                 if mold_p2_data:
-                    MOLD_INFO_P2_I.objects.filter(id_rfq=rfq_base).update(**mold_p2_data)
+                    MOLD_INFO_P2_I.objects.update_or_create(id_rfq=rfq_base, defaults=mold_p2_data)
 
             elif rfq_type == 'die':
                 die_trim_data = data.get('die_trim', {})
                 if die_trim_data:
-                    DIE_TRIM_I.objects.filter(id_rfq=rfq_base).update(**die_trim_data)
+                    DIE_TRIM_I.objects.update_or_create(id_rfq=rfq_base, defaults=die_trim_data)
 
-            estado_msg = "Borrador (Nivel 2)" if is_draft else "Pendiente Aprobación SuperAdmin Ind (Nivel 3)"
+            estado_msg = "Borrador (Nivel 2)" if is_draft else "Pendiente Aprobación (Nivel 3)"
 
             return Response({
                 "mensaje": f"RFQ {rfq_base.id_rfq} actualizado correctamente. Estado actual: {estado_msg}.",
@@ -533,7 +563,7 @@ class CotizacionProveedorView(APIView):
     Endpoint para que el proveedor envíe su cotización técnica y económica.
     (Soporta 'mold' y 'die')
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated,IsSupplier]
 
     @transaction.atomic
     def post(self, request, pk):
