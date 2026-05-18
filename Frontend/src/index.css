@@ -31,6 +31,17 @@
   --priority-high: #ef4444;
   --priority-medium: #f59e0b;
   --priority-low: #10b981;
+
+  /* Z-Index Layers */
+  --z-dropdown: 1000;
+  --z-sticky: 1020;
+  --z-fixed: 1030;
+  --z-modal-backdrop: 1040;
+  --z-modal: 1050;
+  --z-popover: 1060;
+  --z-tooltip: 1070;
+  --z-toast: 1080;
+  --z-notification-sidebar: 1100;
 }
 
 /* Rest of your CSS variables... */
@@ -547,6 +558,39 @@
       var(--surface) 75%);
   background-size: 1000px 100%;
   animation: shimmer 2s infinite;
+}
+
+/* Add to your index.css animations section */
+@keyframes slideInFromRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideOutToRight {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+
+  to {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
+
+.animate-slide-in-right {
+  animation: slideInFromRight 0.3s ease forwards;
+}
+
+.animate-slide-out-right {
+  animation: slideOutToRight 0.3s ease forwards;
 }
 
 /* ============================================

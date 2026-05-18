@@ -1,11 +1,10 @@
-import { useState, useEffect } from 'react';
-import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import Cookies from 'js-cookie';
-
-import Login from './sections/Login'; 
-import Compras from './sections/Compras';
-import Industrializacion from './sections/Industrializacion';
-import './index.css';
+// src/App.jsx
+import { NotificationProvider } from './contexts/NotificationContext';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import Login from './sections/Login';
+import PurchasesDashboard from './sections/Purchases';
+import IndustrializationDashboard from './sections/Industrialization';
+import SuppliersDashboard from './sections/Suppliers';
 
 function App() {
   const [userRole, setUserRole] = useState(null);
@@ -65,72 +64,26 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
-      
-      {/* El Header se muestra solo si NO estamos en la pantalla de Login */}
-      {location.pathname !== '/login' && userRole && (
-        <header className="bg-white border-b px-6 py-4 flex justify-between items-center shadow-sm">
-          <h1 className="font-bold text-[#0f2742]">CHATIZA CORP</h1>
-          <div className="flex items-center gap-4">
-            <span className="text-xs font-medium bg-blue-50 text-blue-700 px-3 py-1 rounded-full border border-blue-200">
-              Rol: {userRole}
-            </span>
-            <button 
-              onClick={handleLogout}
-              className="text-red-600 text-sm border border-red-200 px-3 py-1 rounded hover:bg-red-50 transition-colors"
-            >
-              Cerrar Sesión
-            </button>
-          </div>
-        </header>
-      )}
-
-      {/* ÁREA DE RUTAS DINÁMICAS */}
-      <main className={location.pathname !== '/login' ? "flex-1 p-6" : "flex-1"}>
+    <BrowserRouter>
+      <NotificationProvider>
         <Routes>
-          {/* Ruta Pública */}
-          <Route 
-            path="/login" 
-            element={userRole ? <Navigate to="/" replace /> : <Login onLogin={handleLoginSuccess} />} 
-          />
+          {/* Login */}
+          <Route path="/Login" element={<Login />} />
 
-          {/* Rutas Protegidas de Compras */}
-          {/* El /* permite que el componente Compras tenga sus propias sub-rutas internamente */}
-          <Route 
-            path="/compras/*" 
-            element={
-              <ProtectedRoute allowedRoles={['Purchases', 'Purchases_Admin']}>
-                <Compras />
-              </ProtectedRoute>
-            } 
-          />
+          {/* Purchases module */}
+          <Route path="/Purchases/*" element={<PurchasesDashboard />} />
 
-          {/* Rutas Protegidas de Industrialización */}
-          <Route 
-            path="/industrializacion/*" 
-            element={
-              <ProtectedRoute allowedRoles={['Industrialization', 'Industrialization_Admin']}>
-                <Industrializacion />
-              </ProtectedRoute>
-            } 
-          />
+          {/* Industrialization module  */}
+          <Route path="/Industrialization/*" element={<IndustrializationDashboard />} />
 
-          {/* Ruta Raíz por defecto (Redirige según el rol) */}
-          <Route 
-            path="/" 
-            element={
-              !userRole ? <Navigate to="/login" replace /> :
-              (userRole === 'Purchases' || userRole === 'Purchases_Admin') ? <Navigate to="/compras" replace /> :
-              (userRole === 'Industrialization' || userRole === 'Industrialization_Admin') ? <Navigate to="/industrializacion" replace /> :
-              <div className="p-10">Rol sin página principal configurada.</div>
-            }
-          />
+          {/* Suppliers module */}
+          <Route path="/Suppliers/*" element={<SuppliersDashboard />} />
 
-          {/* Ruta 404 para cualquier URL que no exista */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          {/* Fallback */}
+          <Route path="*" element={<Navigate to="/Login" />} />
         </Routes>
-      </main>
-    </div>
+      </NotificationProvider>
+    </BrowserRouter>
   );
 }
 
