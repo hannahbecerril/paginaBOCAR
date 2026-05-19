@@ -7,7 +7,7 @@ from api.views import (
     RFQAprobadosListView, ProveedorListView, AssignSuppliersRFQView, 
     CrearRFQView, EditarRFQView, CotizacionProveedorView, BuzonProveedorListView, 
     AprobarRechazarProveedoresView, RFQPendientesAprobacionComprasListView, ReviewRFQIndView, 
-    SelectWinningSupplierView, FalloFinalGerencialView, DescargarArchivoSeguroView, ComparativaCotizacionesView
+    SelectWinningSupplierView, FalloFinalGerencialView, DescargarArchivoSeguroView, ComparativaCotizacionesView, DashboardComprasView, DashboardIndustrializacionView , DashboardProveedorView
 
 )
 router = DefaultRouter()
@@ -25,6 +25,9 @@ urlpatterns = [
     path('rfqs/pendientes-compras/', RFQAprobadosListView.as_view(), name='rfqs-aprobados'),
     path('api/rfqs/pendientes-aprobacion-gerencia/', RFQPendientesAprobacionComprasListView.as_view(), name='rfqs-pendientes-gerencia'),
     path('rfq/crear/', CrearRFQView.as_view(), name='rfq-crear'),
+    path('api/dashboard/proveedor/', DashboardProveedorView.as_view(), name='dash-proveedor'),
+    path('api/dashboard/compras/', DashboardComprasView.as_view(), name='dash-compras'),
+    path('api/dashboard/industrializacion/', DashboardIndustrializacionView.as_view(), name='dash-ind'),
     path('usuarios/proveedores/', ProveedorListView.as_view(), name='proveedores-buscar'),
     path('api/', include(router.urls)),
     path('api/rfq/<int:pk>/aprobar-proveedores/', AprobarRechazarProveedoresView.as_view(), name='rfq-aprobar-proveedores'),
