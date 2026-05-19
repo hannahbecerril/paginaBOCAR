@@ -33,13 +33,177 @@ from .models import (
     MOLD_COSTBR_I, DIE_COSTBR_I,
     MOLD_COSTBR_P1_S, MOLD_COSTBR_P2_S, MOLD_COSTBR_P3_S, 
     MOLD_COSTBR_P4_S, MOLD_COSTBR_P5_S, Archivo,
-    DIE_COSTBR_P1_S, DIE_COSTBR_P2_S, DIE_COSTBR_P3_S, DIE_COSTBR_P4_S,
+    DIE_COSTBR_P1_S, DIE_COSTBR_P2_S, DIE_COSTBR_P3_S, DIE_COSTBR_P4_S,RFQ_Tracking,
 
 )
 
+from django.db.models import Count
+from django.db.models.functions import TruncMonth
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+
+class DashboardProveedorView(APIView):
+    """
+    Dashboard para Proveedores: Volumen de trabajo y Tasa de éxito.
+    """
+    permission_classes = [IsAuthenticated, IsSupplier]
+
+    def get(self, request):
+        usuario_email = request.user.email
+
+        asignaciones = RFQ_Assignment.objects.filter(supplier__email=usuario_email)
+        ids_rfqs_asignados = asignaciones.values_list('id_rfq_id', flat=True)
+
+        rfqs = RFQ_Base.objects.filter(id_rfq__in=ids_rfqs_asignados)
+
+        histograma = rfqs.annotate(
+            mes=TruncMonth('modified_date')
+        ).values('mes').annotate(
+            total=Count('id_rfq')
+        ).order_by('mes')
+
+        borradores = Status_RFQ.objects.filter(id_rfq__in=ids_rfqs_asignados, lev6=True).count()
+        aceptados = asignaciones.filter(is_winner=True).count()
+        
+        declinados = RFQ_Assignment.objects.filter(
+            id_rfq__in=ids_rfqs_asignados, 
+            is_winner=True
+        ).exclude(supplier__email=usuario_email).count()
+
+        success_rate = (aceptados / asignaciones.count() * 100) if asignaciones.count() > 0 else 0
+
+        data_histograma = [
+            {"mes": item['mes'].strftime('%Y-%m'), "total": item['total']} 
+            for item in histograma if item['mes']
+        ]
+
+        return Response({
+            "histograma_mensual": data_histograma,
+            "metricas": {
+                "rfqs_en_borrador": borradores,
+                "rfqs_ganados": aceptados,
+                "rfqs_perdidos": declinados,
+                "win_rate_porcentaje": round(success_rate, 2)
+            }
+        }, status=status.HTTP_200_OK)
+
+
+class DashboardComprasView(APIView):
+    """
+    Dashboard para Compras: Embudo de cotizaciones y Tiempos de respuesta del proveedor.
+    """
+    permission_classes = [IsAuthenticated, IsPurchasesUser]
+
+    def get(self, request):
+        rfqs_activos = Status_RFQ.objects.all()
+        
+        bandeja_entrada = rfqs_activos.filter(lev4=True).count()
+        en_cotizacion = rfqs_activos.filter(lev6=True).count()
+        en_analisis = rfqs_activos.filter(lev7=True).count()
+        listos_para_fallo = rfqs_activos.filter(lev8=True).count()
+
+        total_asignaciones = RFQ_Assignment.objects.count()
+        cotizaciones_recibidas = rfqs_activos.filter(lev7=True).count() 
+        tasa_respuesta = (cotizaciones_recibidas / total_asignaciones * 100) if total_asignaciones > 0 else 0
+
+        # --- LÓGICA DE CÁLCULO DE TIEMPO: Proveedores (Nivel 6 -> Nivel 7) ---
+        tiempos_respuesta_horas = []
+        
+        # Obtenemos los RFQs que ya pasaron por cotización (lev7, lev8 o lev9)
+        rfqs_cotizados = rfqs_activos.filter(lev7=True) | rfqs_activos.filter(lev8=True) | rfqs_activos.filter(lev9=True)
+        rfqs_cotizados_ids = rfqs_cotizados.values_list('id_rfq', flat=True)
+        
+        for rfq_id in rfqs_cotizados_ids:
+            # Buscamos cuándo se publicó a proveedores (lev6) y cuándo respondieron (lev7)
+            # Usamos .order_by('fecha_hora').first() para tomar el primer momento cronológico
+            tracking_lev6 = RFQ_Tracking.objects.filter(id_rfq_id=rfq_id, nivel_alcanzado='lev6').order_by('fecha_hora').first()
+            tracking_lev7 = RFQ_Tracking.objects.filter(id_rfq_id=rfq_id, nivel_alcanzado='lev7').order_by('fecha_hora').first()
+            
+            if tracking_lev6 and tracking_lev7 and tracking_lev7.fecha_hora > tracking_lev6.fecha_hora:
+                diferencia = tracking_lev7.fecha_hora - tracking_lev6.fecha_hora
+                horas = diferencia.total_seconds() / 3600.0
+                tiempos_respuesta_horas.append(horas)
+
+        tiempo_promedio = sum(tiempos_respuesta_horas) / len(tiempos_respuesta_horas) if tiempos_respuesta_horas else 0
+
+        return Response({
+            "funnel_cotizaciones": {
+                "nuevos_requerimientos_lev4": bandeja_entrada,
+                "esperando_proveedores_lev6": en_cotizacion,
+                "analisis_costos_lev7": en_analisis,
+                "pendientes_autorizacion_lev8": listos_para_fallo
+            },
+            "kpis": {
+                "tasa_respuesta_proveedores": round(tasa_respuesta, 2),
+                "tiempo_promedio_respuesta_horas": round(tiempo_promedio, 2)
+            }
+        }, status=status.HTTP_200_OK)
+
+
+class DashboardIndustrializacionView(APIView):
+    """
+    Dashboard para Industrialización: Estatus de proyectos y Lead Time Técnico.
+    """
+    permission_classes = [IsAuthenticated, IsIndUser]
+
+    def get(self, request):
+        rfqs_ind = RFQ_Base.objects.all()
+        ids_ind = rfqs_ind.values_list('id_rfq', flat=True)
+        estados = Status_RFQ.objects.filter(id_rfq__in=ids_ind)
+
+        borradores = estados.filter(lev2=True).count()
+        pendientes_jefatura = estados.filter(lev3=True).count()
+        enviados_a_compras = estados.filter(lev4=True).count()
+        cerrados = estados.filter(lev9=True).count()
+
+        distribucion = rfqs_ind.values('type').annotate(total=Count('id_rfq'))
+        data_distribucion = {item['type']: item['total'] for item in distribucion}
+
+        # --- LÓGICA DE CÁLCULO DE TIEMPO: Lead Time Técnico (Nivel 2 -> Nivel 4) ---
+        lead_times_dias = []
+        
+        # Filtramos los proyectos que ya llegaron a compras (lev4 o superior)
+        rfqs_liberados = estados.exclude(lev1=True, lev2=True, lev3=True).values_list('id_rfq', flat=True)
+
+        for rfq_id in rfqs_liberados:
+            # Cuándo se empezó a trabajar el borrador o se envió definitivo por primera vez
+            tracking_inicio = RFQ_Tracking.objects.filter(id_rfq_id=rfq_id, nivel_alcanzado__in=['lev2', 'lev3']).order_by('fecha_hora').first()
+            # Cuándo fue aprobado por el SuperAdmin de Industrialización
+            tracking_fin = RFQ_Tracking.objects.filter(id_rfq_id=rfq_id, nivel_alcanzado='lev4').order_by('fecha_hora').first()
+
+            if tracking_inicio and tracking_fin and tracking_fin.fecha_hora > tracking_inicio.fecha_hora:
+                diferencia = tracking_fin.fecha_hora - tracking_inicio.fecha_hora
+                # En industrialización el ciclo suele ser más largo, medimos en días
+                dias = diferencia.total_seconds() / 86400.0 
+                lead_times_dias.append(dias)
+
+        lead_time_promedio = sum(lead_times_dias) / len(lead_times_dias) if lead_times_dias else 0
+
+        return Response({
+            "estado_requerimientos": {
+                "en_borrador_lev2": borradores,
+                "esperando_firma_jefe_lev3": pendientes_jefatura,
+                "liberados_a_compras_lev4": enviados_a_compras,
+                "proyectos_adjudicados_lev9": cerrados
+            },
+            "distribucion_herramientas": data_distribucion,
+            "kpis": {
+                "lead_time_tecnico_dias": round(lead_time_promedio, 2)
+            }
+        }, status=status.HTTP_200_OK)
+
 User = get_user_model()
 
-
+def registrar_tracking_rfq(rfq_base, nivel, usuario=None):
+    """
+    Función auxiliar para registrar cada cambio de estado en el tiempo.
+    """
+    RFQ_Tracking.objects.create(
+        id_rfq=rfq_base,
+        nivel_alcanzado=nivel,
+        usuario_responsable=usuario
+    )
 class FalloFinalGerencialView(APIView):
     """
     Endpoint PATCH para que el SuperAdmin de Compras apruebe o rechace 
@@ -64,18 +228,21 @@ class FalloFinalGerencialView(APIView):
 
         accion = request.data.get('accion', '').lower()
         rfq_type_label = "Molde" if rfq_base.type == 'mold' else "Troquel"
+        nivel_alcanzado = None # 1. Inicializamos variable
+
 
         if accion == 'aprobar':
             # Transición: Nivel 8 -> Nivel 9 (Licitación Cerrada / Adjudicada)
             status_rfq.lev8 = False
             status_rfq.lev9 = True
+            nivel_alcanzado = 'lev9' # 2. Registramos transición
             mensaje = f"Fallo aprobado exitosamente. El {rfq_type_label} ha sido adjudicado y la licitación está cerrada (Nivel 9)."
         
         elif accion == 'rechazar':
             # Transición: Regresa a Nivel 7 (Análisis de cotizaciones)
             status_rfq.lev8 = False
             status_rfq.lev7 = True
-            
+            nivel_alcanzado = 'lev7' # 2. Registramos transición
             # Limpieza del candidato: Según el requerimiento, borramos al ganador
             # para que el comprador deba elegir uno nuevo.
             asignacion.winning_supplier = None
@@ -89,6 +256,8 @@ class FalloFinalGerencialView(APIView):
             )
 
         status_rfq.save()
+        if nivel_alcanzado: # 4. Inyección
+            registrar_tracking_rfq(rfq_base, nivel_alcanzado, request.user)
 
         return Response({
             "mensaje": mensaje,
@@ -222,6 +391,7 @@ class AssignSuppliersRFQView(APIView):
         status_rfq.lev4 = False
         status_rfq.lev5 = True
         status_rfq.save()
+        registrar_tracking_rfq(rfq, 'lev5', request.user)
 
         return Response({ 
             "message": f"Proveedores guardados para el RFQ {rfq.id_rfq}. Enviado a gerencia.",
@@ -517,7 +687,7 @@ class EditarRFQView(APIView):
             if 'type' in data:
                 rfq_base.type = data['type']
             rfq_base.save()
-
+            nivel_alcanzado = None # 1. Inicializamos
             # Máquina de estados consistente
             if is_draft:
                 status_rfq.lev2 = True
@@ -527,9 +697,11 @@ class EditarRFQView(APIView):
                 status_rfq.lev2 = False
                 status_rfq.lev3 = True
                 status_rfq.lev4 = False
+                nivel_alcanzado = 'lev3' # Solo trackeamos el envío definitivo
                 
             status_rfq.save()
-
+            if nivel_alcanzado: # 3. Inyección condicionada
+                registrar_tracking_rfq(rfq_base, nivel_alcanzado, request.user)
             # Uso de update_or_create para manejar guardados parciales sin perder referencias
             rfq_type = rfq_base.type
             if rfq_type == 'mold':
@@ -614,6 +786,8 @@ class CotizacionProveedorView(APIView):
                 status_rfq.lev6 = False
                 status_rfq.lev7 = True
                 status_rfq.save()
+
+                registrar_tracking_rfq(rfq_base, 'lev7', request.user)
                 self._notificar_entrega(rfq_base.id_rfq)
                 estado_msg = "Cotización enviada oficialmente para revisión (Nivel 7)."
 
@@ -710,15 +884,19 @@ class AprobarRechazarProveedoresView(APIView):
             )
 
         accion = request.data.get('accion', '').lower()
+        nivel_alcanzado = None # 1. Inicializamos
+
 
         if accion == 'aprobar':
             status_rfq.lev5 = False
             status_rfq.lev6 = True
+            nivel_alcanzado = 'lev6' # 2. Registramos transición
             mensaje = "Lista de proveedores aprobada. El RFQ ha sido publicado a los proveedores (Nivel 6)."
         
         elif accion == 'rechazar':
             status_rfq.lev5 = False
             status_rfq.lev4 = True
+            nivel_alcanzado = 'lev4' # 2. Registramos transición
             mensaje = "Lista rechazada. El RFQ ha sido devuelto a los compradores para una nueva selección (Nivel 4)."
         
         else:
@@ -728,6 +906,9 @@ class AprobarRechazarProveedoresView(APIView):
             )
 
         status_rfq.save()
+
+        if nivel_alcanzado: # 4. Inyección
+            registrar_tracking_rfq(rfq_base, nivel_alcanzado, request.user)
 
         return Response({
             "mensaje": mensaje,
@@ -778,6 +959,9 @@ class ReviewRFQIndView(APIView):
             )
 
         is_approved = request.data.get('is_approved')
+        
+        nivel_alcanzado = None # 1. Inicializamos
+        
         if is_approved is None:
             return Response(
                 {"error": "Se requiere el campo 'is_approved' (booleano)."},
@@ -801,12 +985,14 @@ class ReviewRFQIndView(APIView):
             # Transición a Nivel 4 (Enviado a Compras)
             status_rfq.lev3 = False
             status_rfq.lev4 = True
+            nivel_alcanzado = 'lev4' # 2. Registramos transición
             estado_msg = "APPROVED_BY_IND (Aprobado y transferido a Compras)"
         
         else:
             # RECHAZADO -> Regresa a Nivel 2 (Borrador para corrección)
             status_rfq.lev3 = False
             status_rfq.lev2 = True
+            nivel_alcanzado = 'lev2' # 2. Registramos transición
             estado_msg = "DRAFT_IND (Rechazado, regresó a edición)"
 
         status_rfq.save()
@@ -840,6 +1026,11 @@ class SelectWinningSupplierView(APIView):
 
         # 3. Obtener el ID enviado en la petición
         proveedor_id = request.data.get('proveedor_id')
+        if not proveedor_id:
+            return Response({"error": "Se requiere el campo 'proveedor_id'."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        asignacion = get_object_or_404(RFQ_Assignment, id_rfq=rfq_base, supplier_id=proveedor_id)
+        
         if not asignacion:
             return Response(
                 {"error": "Se requiere el campo 'proveedor_id' en el cuerpo de la petición."},
@@ -855,6 +1046,8 @@ class SelectWinningSupplierView(APIView):
         status_rfq.lev7 = False
         status_rfq.lev8 = True
         status_rfq.save()
+
+        registrar_tracking_rfq(rfq_base, 'lev8', request.user)
 
         return Response({
             "mensaje": f"Proveedor marcado como ganador virtual. RFQ enviado a validación gerencial (Nivel 8).",
