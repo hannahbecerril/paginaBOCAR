@@ -1,17 +1,27 @@
+// sections/Login/Login.jsx
 import { useState } from 'react';
-import { Building, Users, Shield, ArrowRight } from 'lucide-react'; 
+import { Building, Users, Shield, ArrowRight } from 'lucide-react';
 import Cookies from 'js-cookie';
 import CryptoJS from 'crypto-js';
-import Button from '../../components/ui/Button'; // Ajusta las rutas si es necesario
-import Input from '../../components/ui/Input';   // Ajusta las rutas si es necesario
+import Button from '../../components/ui/Button';
+import Input from '../../components/ui/Input';
 
-// Se recibe la prop onLogin
 export default function Login({ onLogin }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [userType, setUserType] = useState('internal');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Función para ordenar las llaves del objeto alfabéticamente (para HMAC)
+  const getSortedObject = (obj) => {
+    return Object.keys(obj)
+      .sort()
+      .reduce((result, key) => {
+        result[key] = obj[key];
+        return result;
+      }, {});
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -22,12 +32,13 @@ export default function Login({ onLogin }) {
       let url = 'http://127.0.0.1:8000/api/auth/login/interno/';
       let headers = { 'Content-Type': 'application/json' };
 
-      const payloadObj = { password, username };
+      // Crear payload ordenado alfabéticamente
+      const payloadObj = getSortedObject({ password, username });
       const bodyString = JSON.stringify(payloadObj);
 
       if (userType === 'supplier') {
         url = 'http://127.0.0.1:8000/api/auth/login/proveedor/';
-        const secretKey = 'secret_key'; 
+        const secretKey = 'clave_secreta'; // La clave secreta compartida con el backend
         const hash = CryptoJS.HmacSHA256(bodyString, secretKey).toString(CryptoJS.enc.Hex);
         headers['X-Signature'] = hash;
       }
@@ -39,27 +50,48 @@ export default function Login({ onLogin }) {
       });
 
       const data = await response.json();
-      
-      console.log("Respuesta exacta del backend:", data);
-      
-      if (!response.ok) throw new Error(data.error || 'Error de autenticación');
 
-      Cookies.set('access_token', data.access, { expires: 1, sameSite: 'strict' });
-      Cookies.set('refresh_token', data.refresh, { expires: 7, sameSite: 'strict' });
-      
+      if (!response.ok) {
+        throw new Error(data.error || 'Authentication error');
+      }
 
-      const rolDetectado = data?.usuario?.grupos?.[0] || data?.usuario?.groups?.[0] || data?.usuario?.rol || 'Industrialization';
+      // Guardar tokens
+      if (data.access) {
+        Cookies.set('access_token', data.access, { expires: 1, sameSite: 'strict' });
+      }
+      if (data.refresh) {
+        Cookies.set('refresh_token', data.refresh, { expires: 7, sameSite: 'strict' });
+      }
 
-      console.log("Rol que detectó React:", rolDetectado);
+      // Detectar el rol correctamente
+      let rolDetectado = 'Industrialization'; // Default
 
+      if (data?.usuario?.grupos && data.usuario.grupos.length > 0) {
+        rolDetectado = data.usuario.grupos[0];
+      } else if (data?.usuario?.groups && data.usuario.groups.length > 0) {
+        rolDetectado = data.usuario.groups[0];
+      } else if (data?.usuario?.rol) {
+        rolDetectado = data.usuario.rol;
+      }
+
+      // Normalizar el rol (eliminar _Admin si existe para las rutas)
+      let rolParaRuta = rolDetectado;
+      if (rolDetectado.includes('_Admin')) {
+        rolParaRuta = rolDetectado.replace('_Admin', '');
+      }
+
+      // Guardar usuario en localStorage con la información completa
       const userToSave = {
         ...data.usuario,
-        rol: rolDetectado
+        rol: rolDetectado,
+        rolParaRuta: rolParaRuta
       };
       localStorage.setItem('user', JSON.stringify(userToSave));
 
-
-      onLogin(rolDetectado);
+      // Llamar al callback con el rol detectado
+      if (onLogin) {
+        onLogin(rolDetectado);
+      }
 
     } catch (err) {
       setError(err.message);
@@ -82,7 +114,7 @@ export default function Login({ onLogin }) {
             e.target.style.display = 'none';
           }}
         >
-          <source src="BOCAR_video.mp4" type="video/mp4" />
+          <source src="/BOCAR_video.mp4" type="video/mp4" />
         </video>
         <div className="absolute inset-0 opacity-20"
           style={{
@@ -96,8 +128,8 @@ export default function Login({ onLogin }) {
         {/* Logo Section */}
         <div className="relative z-10">
           <div className="flex flex-col items-start gap-3 text-white">
-            <div className="w-60 flex items-center justify-center rounded">
-              <img src="BOCAR_logoLight.png" alt="BOCAR Logo" />
+            <div className="w-60 flex items-center justify-center">
+              <img src="/BOCAR_logoLight.png" alt="BOCAR Logo" />
             </div>
           </div>
         </div>

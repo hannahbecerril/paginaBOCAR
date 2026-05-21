@@ -65,6 +65,7 @@ conda activate tc3005b-bocar
 ## Ejecuta las migraciones
 ```bash
 cd backend
+python manage.py makemigrations
 python manage.py migrate
 python manage.py runserver
 ```

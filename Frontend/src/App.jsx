@@ -1,9 +1,8 @@
 // src/App.jsx
 import { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Routes, Route, Navigate } from 'react-router-dom';
 import Cookies from 'js-cookie';
 import { NotificationProvider } from './contexts/NotificationContext';
-import { Routes, Route, Navigate } from 'react-router-dom';
 import Login from './sections/Login';
 import PurchasesDashboard from './sections/Purchases';
 import IndustrializationDashboard from './sections/Industrialization';
@@ -12,7 +11,6 @@ import SuppliersDashboard from './sections/Suppliers';
 function App() {
   const [userRole, setUserRole] = useState(null);
   const [loading, setLoading] = useState(true);
-
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -22,26 +20,32 @@ function App() {
       const token = Cookies.get('access_token');
 
       if (storedUser && token) {
-        const user = JSON.parse(storedUser);
-        setUserRole(user.rol);
+        try {
+          const user = JSON.parse(storedUser);
+          setUserRole(user.rol);
+        } catch (e) {
+          console.error('Error parsing user from localStorage', e);
+          localStorage.removeItem('user');
+        }
       }
       setLoading(false);
     };
     checkAuth();
   }, []);
 
-  const handleLoginSuccess = (role) => {
-    setUserRole(role);
+  const handleLoginSuccess = (rol) => {
+    setUserRole(rol);
 
-    if (role === 'Purchases' || role === 'Purchases_Admin') {
-      navigate('/Purchases');
-    } else if (role === 'Industrialization' || role === 'Industrialization_Admin') {
-      navigate('/Industrialization');
-    } else if (role === 'Suppliers' || role === 'Suppliers_Admin') {
-      navigate('/Suppliers');
-    } else {
-      navigate('/Login');
+    let redirectPath = '/';
+    if (rol === 'Purchases' || rol === 'Purchases_Admin') {
+      redirectPath = '/Purchases';
+    } else if (rol === 'Industrialization' || rol === 'Industrialization_Admin') {
+      redirectPath = '/Industrialization';
+    } else if (rol === 'Suppliers' || rol === 'Suppliers_Admin') {
+      redirectPath = '/Suppliers';
     }
+
+    navigate(redirectPath);
   };
 
   const handleLogout = () => {
@@ -65,11 +69,21 @@ function App() {
 
   const ProtectedRoute = ({ children, allowedRoles }) => {
     if (!userRole) return <Navigate to="/Login" replace />;
-    if (!allowedRoles.includes(userRole)) {
+
+    const normalizedRole = userRole.replace('_Admin', '');
+
+    if (!allowedRoles.includes(normalizedRole)) {
       return (
         <div className="p-10 text-center">
           <h2 className="text-xl font-bold mb-2" style={{ color: 'var(--brand-danger)' }}>Access Denied</h2>
           <p style={{ color: 'var(--text-secondary)' }}>Your role ({userRole}) does not have permission to view this section.</p>
+          <button
+            onClick={handleLogout}
+            className="mt-4 px-4 py-2 text-sm"
+            style={{ backgroundColor: 'var(--brand-accent)', color: 'white' }}
+          >
+            Go Back to Login
+          </button>
         </div>
       );
     }
@@ -79,40 +93,35 @@ function App() {
   return (
     <NotificationProvider>
       <Routes>
-        {/* Login */}
-        <Route path="/Login" element={<Login onLoginSuccess={handleLoginSuccess} />} />
+        <Route path="/Login" element={<Login onLogin={handleLoginSuccess} />} />
 
-        {/* Purchases module */}
         <Route
           path="/Purchases/*"
           element={
-            <ProtectedRoute allowedRoles={['Purchases', 'Purchases_Admin']}>
+            <ProtectedRoute allowedRoles={['Purchases']}>
               <PurchasesDashboard />
             </ProtectedRoute>
           }
         />
 
-        {/* Industrialization module */}
         <Route
           path="/Industrialization/*"
           element={
-            <ProtectedRoute allowedRoles={['Industrialization', 'Industrialization_Admin']}>
+            <ProtectedRoute allowedRoles={['Industrialization']}>
               <IndustrializationDashboard />
             </ProtectedRoute>
           }
         />
 
-        {/* Suppliers module */}
         <Route
           path="/Suppliers/*"
           element={
-            <ProtectedRoute allowedRoles={['Suppliers', 'Suppliers_Admin']}>
+            <ProtectedRoute allowedRoles={['Suppliers']}>
               <SuppliersDashboard />
             </ProtectedRoute>
           }
         />
 
-        {/* Fallback */}
         <Route path="*" element={<Navigate to="/Login" replace />} />
       </Routes>
     </NotificationProvider>
