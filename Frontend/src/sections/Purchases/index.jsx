@@ -1,20 +1,35 @@
 // src/sections/Purchases/index.jsx
 import { Routes, Route, Navigate } from 'react-router-dom';
+
 import NavBar from '../../components/layout/NavBar';
+
 import SuppliersList from './SuppliersList';
 import Users from './Users';
+
+import AllRFQ from './AllRFQ';
+import NotAnsweredRFQ from './NotAnsweredRFQ';
 import Drafts from './Drafts';
-import RFQList from './RFQList';
 
 import RFQDetails from '../../components/layout/RFQDetails';
 import UserDetails from '../../components/layout/UserDetails';
 
 export default function PurchasesDashboard() {
+    // Regular tabs (no dropdown)
     const tabs = [
         { label: 'Suppliers List', path: 'Suppliers' },
         { label: 'Users', path: 'Users' },
-        { label: 'Drafts', path: 'Drafts' },
-        { label: 'RFQ List', path: 'RFQ-List' },
+    ];
+
+    // Dropdown sections
+    const sections = [
+        {
+            label: 'RFQ Management',
+            items: [
+                { label: 'All RFQ', path: 'All-RFQ' },
+                { label: 'Not Answered RFQs', path: 'Not-Answered-RFQs' },
+                { label: 'Drafts', path: 'Drafts' },
+            ]
+        },
     ];
 
     return (
@@ -23,6 +38,7 @@ export default function PurchasesDashboard() {
                 module="Purchases"
                 basePath="/Purchases"
                 tabs={tabs}
+                sections={sections}
                 user={{ name: "Maria Garcia" }}
             />
 
@@ -32,8 +48,8 @@ export default function PurchasesDashboard() {
                     <Route path="Suppliers" element={<SuppliersList />} />
                     <Route path="Users" element={<Users />} />
                     <Route path="Drafts" element={<Drafts />} />
-                    <Route path="RFQ-List" element={<RFQList />} />
-
+                    <Route path="All-RFQ" element={<AllRFQ />} />
+                    <Route path="Not-Answered-RFQs" element={<NotAnsweredRFQ />} />
                     {/* Dynamic routes for details */}
                     <Route path="rfq/:id" element={<RFQDetails />} />
                     <Route path="user/:id" element={<UserDetails />} />

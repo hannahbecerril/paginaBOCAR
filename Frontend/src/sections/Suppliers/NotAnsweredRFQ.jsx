@@ -1,27 +1,26 @@
-// sections/Suppliers/Drafts.jsx
+// sections/Suppliers/NotAnsweredRFQ.jsx
 import { useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import TableComponent from '../../components/layout/TableComponent';
 import rfqsData from '../rfqs-data.json';
 
-export default function Drafts() {
+export default function NotAnsweredRFQ() {
     const navigate = useNavigate();
-    const [drafts, setDrafts] = useState([]);
+    const [rfqList, setRfqList] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        // Filter RFQs that are in draft status
-        const draftStatuses = ['supplier draft'];
-        const filteredDrafts = rfqsData.rfqs
-            .filter(rfq => draftStatuses.includes(rfq.status.toLowerCase()))
+        // Filter to all productive RFQs (excluding drafts)
+        const notAnsweredStatuses = ['sent to suppliers'];
+        const filteredRfqs = rfqsData.rfqs
+            .filter(rfq => notAnsweredStatuses.includes(rfq.status.toLowerCase()))
             .map(rfq => ({
                 id: rfq.id,
                 title: rfq.title,
                 category: rfq.category,
-                progress: rfq.stage1?.data?.completionPercentage || 0,
                 last_modified: rfq.lastModified
             }));
-        setDrafts(filteredDrafts);
+        setRfqList(filteredRfqs);
         setLoading(false);
     }, []);
 
@@ -29,9 +28,9 @@ export default function Drafts() {
         { key: 'id', label: 'ID', type: 'id', sortable: true, filterable: true },
         { key: 'title', label: 'RFQ', type: 'file_name', sortable: true, filterable: true },
         { key: 'category', label: 'Category', type: 'badge', sortable: true, filterable: true },
-        { key: 'progress', label: 'Progress', type: 'progress', sortable: true },
         { key: 'last_modified', label: 'Last Modified', type: 'time', sortable: true, filterable: true },
     ];
+
 
     const handleRowClick = (row) => {
         navigate(`/Suppliers/rfq/${row.id}`);
@@ -43,9 +42,9 @@ export default function Drafts() {
 
     return (
         <TableComponent
-            title="Draft Management"
-            subtitle="Manage RFQ drafts"
-            data={drafts}
+            title="Not Answered RFQ Management"
+            subtitle="Manage all RFQs that have been sent to suppliers but not yet answered"
+            data={rfqList}
             columns={columns}
             onClickRow={handleRowClick}
             onEdit={(row) => console.log('Edit', row)}

@@ -1,5 +1,6 @@
 // components/layout/NotisSidebar.jsx
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { X, Bell, CheckCircle, AlertCircle, Info, Clock, Settings } from 'lucide-react';
 import NotificationConfig from './NotificationConfig';
 
@@ -14,6 +15,7 @@ export default function NotisSidebar({
     userRole,
     title = "Notifications"
 }) {
+    const navigate = useNavigate();
     const [isVisible, setIsVisible] = useState(isOpen);
     const [animation, setAnimation] = useState('');
     const [showConfig, setShowConfig] = useState(false);
@@ -35,6 +37,20 @@ export default function NotisSidebar({
             document.body.style.overflow = 'unset';
         };
     }, [isOpen]);
+
+    const handleNotificationClick = (notification) => {
+        // Mark as read
+        if (onMarkAsRead && !notification.read) {
+            onMarkAsRead(notification.id);
+        }
+
+        // Navigate to RFQ details if rfqId exists
+        if (notification.rfqId) {
+            const basePath = `/${userRole.charAt(0).toUpperCase() + userRole.slice(1)}`;
+            navigate(`${basePath}/rfq/${notification.rfqId}`);
+            onClose();
+        }
+    };
 
     if (!isVisible) return null;
 
@@ -180,7 +196,7 @@ export default function NotisSidebar({
                                     key={notification.id}
                                     className={`px-5 py-3 border-b border-border-light transition-colors duration-fast cursor-pointer hover:bg-surface-hover ${!notification.read ? 'bg-brand-accent/5' : ''
                                         }`}
-                                    onClick={() => onMarkAsRead && onMarkAsRead(notification.id)}
+                                    onClick={() => handleNotificationClick(notification)}
                                 >
                                     <div className="flex items-start gap-3">
                                         <div className="flex-shrink-0 mt-0.5">
@@ -198,6 +214,11 @@ export default function NotisSidebar({
                                             <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
                                                 {notification.message}
                                             </p>
+                                            {notification.rfqId && (
+                                                <p className="text-xs mt-1" style={{ color: 'var(--brand-accent)' }}>
+                                                    RFQ: {notification.rfqId}
+                                                </p>
+                                            )}
                                             {notification.category && (
                                                 <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>
                                                     {notification.category.label}

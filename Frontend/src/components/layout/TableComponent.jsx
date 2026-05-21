@@ -353,9 +353,6 @@ export default function TableComponent({
                                             </div>
                                         </th>
                                     ))}
-                                    <th className="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
-                                        Actions
-                                    </th>
                                 </tr>
                             </thead>
 
@@ -386,36 +383,6 @@ export default function TableComponent({
                                                     }
                                                 </td>
                                             ))}
-                                            <td className="px-6 py-4 whitespace-nowrap text-right">
-                                                <div className="flex items-center justify-end gap-1">
-                                                    {onEdit && (
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                onEdit(row);
-                                                            }}
-                                                            className="p-2 transition-colors rounded-none hover:text-brand-accent hover:bg-brand-accent/10"
-                                                            style={{ color: 'var(--text-tertiary)' }}
-                                                            title="Edit"
-                                                        >
-                                                            <Pencil size={16} />
-                                                        </button>
-                                                    )}
-                                                    {onDelete && (
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                onDelete(row);
-                                                            }}
-                                                            className="p-2 transition-colors rounded-none hover:text-brand-danger hover:bg-brand-danger/10"
-                                                            style={{ color: 'var(--text-tertiary)' }}
-                                                            title="Delete"
-                                                        >
-                                                            <Trash2 size={16} />
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </td>
                                         </tr>
                                     ))
                                 )}

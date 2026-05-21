@@ -1,0 +1,88 @@
+{
+    "suppliers": [
+        {
+            "id": "plastic-solutions",
+            "name": "Plastic Solutions S.A.",
+            "email": "maria@company.com",
+            "role": "Supplier",
+            "department": "Suppliers",
+            "status": "active",
+            "lastLogin": "Today, 10:30 AM",
+            "createdAt": "2024-01-15",
+            "createdBy": "System Admin",
+            "avatar": null,
+            "recentActivity": [
+                { "action": "Drafted a response to RFQ SOL-001", "date": "Today, 10:30 AM" },
+                { "action": "Sent a response to RFQ SOL-005", "date": "Mar 25, 2024" }
+            ],
+            "permissions": [
+                "View RFQs",
+                "Edit Drafts",
+                "Respond to RFQs"
+            ]
+        },
+        {
+            "id": "metalworks",
+            "name": "MetalWorks Ltd.",
+            "email": "carlos@company.com",
+            "role": "Supplier",
+            "department": "Suppliers",
+            "status": "active",
+            "lastLogin": "Today, 10:30 AM",
+            "createdAt": "2024-01-15",
+            "createdBy": "System Admin",
+            "avatar": null,
+            "recentActivity": [
+                { "action": "Drafted a response to RFQ SOL-001", "date": "Today, 10:30 AM" },
+                { "action": "Sent a response to RFQ SOL-005", "date": "Mar 25, 2024" }
+            ],
+            "permissions": [
+                "View RFQs",
+                "Edit Drafts",
+                "Respond to RFQs"
+            ]
+        },
+        {
+            "id": "eco-packaging",
+            "name": "Eco Packaging Inc.",
+            "email": "ana@company.com",
+            "role": "Supplier",
+            "department": "Suppliers",
+            "status": "active",
+            "lastLogin": "Today, 10:30 AM",
+            "createdAt": "2024-01-15",
+            "createdBy": "System Admin",
+            "avatar": null,
+            "recentActivity": [
+                { "action": "Drafted a response to RFQ SOL-001", "date": "Today, 10:30 AM" },
+                { "action": "Sent a response to RFQ SOL-005", "date": "Mar 25, 2024" }
+            ],
+            "permissions": [
+                "View RFQs",
+                "Edit Drafts",
+                "Respond to RFQs"
+            ]
+        },
+        {
+            "id": "industrial-components",
+            "name": "Industrial Components Co.",
+            "email": "mario@company.com",
+            "role": "Supplier",
+            "department": "Suppliers",
+            "status": "inactive",
+            "lastLogin": "Today, 10:30 AM",
+            "createdAt": "2024-01-15",
+            "createdBy": "System Admin",
+            "avatar": null,
+            "recentActivity": [
+                { "action": "Drafted a response to RFQ SOL-001", "date": "Today, 10:30 AM" },
+                { "action": "Sent a response to RFQ SOL-005", "date": "Mar 25, 2024" }
+            ],
+            "permissions": [
+                "View RFQs",
+                "Edit Drafts",
+                "Respond to RFQs"
+            ]
+        }
+    ]
+}

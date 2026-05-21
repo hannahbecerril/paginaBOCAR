@@ -1,61 +1,53 @@
-// sections/Drafts.jsx
+// sections/Purchases/Drafts.jsx
 import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
 import TableComponent from '../../components/layout/TableComponent';
+import rfqsData from '../rfqs-data.json';
 
 export default function Drafts() {
     const navigate = useNavigate();
+    const [drafts, setDrafts] = useState([]);
+    const [loading, setLoading] = useState(true);
 
-    const Drafts = [
-        {
-            id: 'SOL-001',
-            title: 'Cotizacion SOL-001',
-            category: 'Metal',
-            progress: 90,
-            last_modified: 'Today, 2:30 PM',
-        },
-        {
-            id: 'SOL-002',
-            title: 'Cotizacion SOL-002',
-            category: 'Plastic',
-            progress: 48,
-            last_modified: 'Today, 2:30 PM',
-        },
-        {
-            id: 'SOL-003',
-            title: 'Cotizacion SOL-003',
-            category: 'Metal',
-            progress: 75,
-            last_modified: 'Today, 2:30 PM',
-        },
-        {
-            id: 'SOL-004',
-            title: 'Cotizacion SOL-004',
-            category: 'Plastic',
-            progress: 29,
-            last_modified: 'Today, 2:30 PM',
-        },
-    ];
+    useEffect(() => {
+        // Filter RFQs that are in draft status
+        const draftStatuses = ['purchases draft'];
+        const filteredDrafts = rfqsData.rfqs
+            .filter(rfq => draftStatuses.includes(rfq.status.toLowerCase()))
+            .map(rfq => ({
+                id: rfq.id,
+                title: rfq.title,
+                category: rfq.category,
+                progress: rfq.stage1?.data?.completionPercentage || 0,
+                last_modified: rfq.lastModified
+            }));
+        setDrafts(filteredDrafts);
+        setLoading(false);
+    }, []);
 
     const columns = [
         { key: 'id', label: 'ID', type: 'id', sortable: true, filterable: true },
         { key: 'title', label: 'RFQ', type: 'file_name', sortable: true, filterable: true },
         { key: 'category', label: 'Category', type: 'badge', sortable: true, filterable: true },
         { key: 'progress', label: 'Progress', type: 'progress', sortable: true },
-        { key: 'last_modified', label: 'Last Time Modified', type: 'time', sortable: true, filterable: true },
+        { key: 'last_modified', label: 'Last Modified', type: 'time', sortable: true, filterable: true },
     ];
 
     const handleRowClick = (row) => {
         navigate(`/Purchases/rfq/${row.id}`);
     };
 
+    if (loading) {
+        return <div className="flex justify-center p-8"><div className="animate-spin w-8 h-8 border-2 border-brand-accent border-t-transparent" /></div>;
+    }
+
     return (
         <TableComponent
             title="Draft Management"
-            subtitle="Manage system Drafts"
-            data={Drafts}
+            subtitle="Manage RFQ drafts"
+            data={drafts}
             columns={columns}
             onClickRow={handleRowClick}
-            onAdd={() => alert('Create RFQ')}
             onEdit={(row) => console.log('Edit', row)}
             onDelete={(row) => console.log('Delete', row)}
         />

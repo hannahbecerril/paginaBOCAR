@@ -1,27 +1,29 @@
-// sections/Suppliers/Drafts.jsx
+// sections/Purchases/AllRFQ.jsx
 import { useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import TableComponent from '../../components/layout/TableComponent';
 import rfqsData from '../rfqs-data.json';
 
-export default function Drafts() {
+export default function AllRFQ() {
     const navigate = useNavigate();
-    const [drafts, setDrafts] = useState([]);
+    const [rfqList, setRfqList] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        // Filter RFQs that are in draft status
-        const draftStatuses = ['supplier draft'];
-        const filteredDrafts = rfqsData.rfqs
-            .filter(rfq => draftStatuses.includes(rfq.status.toLowerCase()))
+        // Filter to all productive RFQs (excluding drafts)
+        const draftStatuses = ['industrialization draft', 'purchases draft', 'sent to purchases'];
+        const filteredRfqs = rfqsData.rfqs
+            .filter(rfq => !draftStatuses.includes(rfq.status.toLowerCase()))
             .map(rfq => ({
                 id: rfq.id,
                 title: rfq.title,
                 category: rfq.category,
-                progress: rfq.stage1?.data?.completionPercentage || 0,
+                priority: rfq.priority,
+                status: rfq.status,
+                offers: rfq.stage3?.data?.responses?.length || 0,
                 last_modified: rfq.lastModified
             }));
-        setDrafts(filteredDrafts);
+        setRfqList(filteredRfqs);
         setLoading(false);
     }, []);
 
@@ -29,12 +31,14 @@ export default function Drafts() {
         { key: 'id', label: 'ID', type: 'id', sortable: true, filterable: true },
         { key: 'title', label: 'RFQ', type: 'file_name', sortable: true, filterable: true },
         { key: 'category', label: 'Category', type: 'badge', sortable: true, filterable: true },
-        { key: 'progress', label: 'Progress', type: 'progress', sortable: true },
-        { key: 'last_modified', label: 'Last Modified', type: 'time', sortable: true, filterable: true },
+        { key: 'priority', label: 'Priority', type: 'priority', sortable: true, filterable: true },
+        { key: 'status', label: 'Status', type: 'rfq-status', sortable: true, filterable: true },
+        { key: 'offers', label: 'Offers', type: 'number', sortable: true, filterable: true },
+        { key: 'last_modified', label: 'Last Time Modified', type: 'time', sortable: true, filterable: true },
     ];
 
     const handleRowClick = (row) => {
-        navigate(`/Suppliers/rfq/${row.id}`);
+        navigate(`/Purchases/rfq/${row.id}`);
     };
 
     if (loading) {
@@ -43,9 +47,9 @@ export default function Drafts() {
 
     return (
         <TableComponent
-            title="Draft Management"
-            subtitle="Manage RFQ drafts"
-            data={drafts}
+            title="RFQ Management"
+            subtitle="Manage all RFQs"
+            data={rfqList}
             columns={columns}
             onClickRow={handleRowClick}
             onEdit={(row) => console.log('Edit', row)}

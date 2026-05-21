@@ -1,10 +1,10 @@
-// sections/Compras/RFQForm.jsx
+// sections/Compras/CreateRFQ.jsx
 import { useState } from 'react';
 import Input from '../../components/ui/Input';
 import Button from '../../components/ui/Button';
 import UploadCard from '../../components/ui/UploadCard';
 
-export default function RFQForm() {
+export default function CreateRFQ() {
     const [form, setForm] = useState({
         name: '',
         description: '',
