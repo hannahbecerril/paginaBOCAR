@@ -291,45 +291,90 @@ class DescargarArchivoSeguroView(APIView):
         response['Content-Disposition'] = f'attachment; filename="{archivo_obj.nombre}"'
         
         return response
-class RFQAprobadosListView(generics.ListAPIView):
+class RFQClasificadoListView(APIView):
     """
-    Endpoint GET que devuelve los RFQ aprobados por Ind (Nivel 4).
-    La lógica de enrutamiento a tablas técnicas se maneja directamente aquí.
+    Endpoint dinámico para listar RFQs filtrados por Rol del usuario
+    y Tipo de Vista (all, draft).
+    Incluye inyección de detalles técnicos.
     """
-    serializer_class = RFQBaseSerializer
-    permission_classes = [IsAuthenticated, IsPurchasesUser]
+    permission_classes = [IsAuthenticated]
 
-    def get_queryset(self):
-        # Filtramos los IDs que ya pasaron la aprobación de Industrialización
-        rfqs_aprobados_ids = Status_RFQ.objects.filter(lev4=True).values_list('id_rfq', flat=True)
-        return RFQ_Base.objects.filter(id_rfq__in=rfqs_aprobados_ids)
+    def get(self, request):
+        user = request.user
+        grupos = list(user.groups.values_list('name', flat=True))
+        tipo_vista = request.query_params.get('vista', 'all').lower()
+        
+        if tipo_vista not in ['all', 'draft']:
+            return Response(
+                {"error": "Parámetro 'vista' inválido. Use 'all' o 'draft'."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-    def list(self, request, *args, **kwargs):
-        # 1. Ejecutamos la lógica estándar de ListAPIView para obtener los datos base
-        queryset = self.get_queryset()
-        serializer = self.get_serializer(queryset, many=True)
-        data = serializer.data  # Esto es una lista de diccionarios
+        queryset = RFQ_Base.objects.none()
 
-        # 2. Iteramos sobre cada RFQ serializado para inyectar información extra
+        # ── 1. FILTROS PARA INDUSTRIALIZACIÓN ───────────────────────────────
+        if 'Industrialization' in grupos or 'Industrialization_Admin' in grupos or 'SuperAdmin' in grupos:
+            if tipo_vista == 'all':
+                estados_ids = Status_RFQ.objects.filter(
+                    Q(lev4=True) | Q(lev6=True) | Q(lev7=True) | Q(lev8=True) | Q(lev9=True)
+                ).values_list('id_rfq', flat=True)
+                queryset = RFQ_Base.objects.filter(id_rfq__in=estados_ids)
+                
+            elif tipo_vista == 'draft':
+                estados_ids = Status_RFQ.objects.filter(lev2=True).values_list('id_rfq', flat=True)
+                queryset = RFQ_Base.objects.filter(id_rfq__in=estados_ids, created_by=user.username)
+
+        # ── 2. FILTROS PARA COMPRAS ─────────────────────────────────────────
+        elif 'Purchases' in grupos or 'Purchases_Admin' in grupos:
+            if tipo_vista == 'all':
+                estados_ids = Status_RFQ.objects.filter(
+                    Q(lev6=True) | Q(lev7=True) | Q(lev8=True) | Q(lev9=True)
+                ).values_list('id_rfq', flat=True)
+                queryset = RFQ_Base.objects.filter(id_rfq__in=estados_ids)
+                
+            elif tipo_vista == 'draft':
+                rfqs_lev4 = Status_RFQ.objects.filter(lev4=True).values_list('id_rfq', flat=True)
+                rfqs_con_proveedor = RFQ_Assignment.objects.filter(id_rfq_id__in=rfqs_lev4).values_list('id_rfq_id', flat=True)
+                queryset = RFQ_Base.objects.filter(id_rfq__in=rfqs_con_proveedor)
+
+        # ── 3. FILTROS PARA PROVEEDORES ─────────────────────────────────────
+        elif 'Supplier' in grupos:
+            rfqs_asignados_ids = RFQ_Assignment.objects.filter(supplier_id=user.id).values_list('id_rfq_id', flat=True)
+
+            if tipo_vista == 'all':
+                estados_ids = Status_RFQ.objects.filter(
+                    id_rfq__in=rfqs_asignados_ids
+                ).filter(Q(lev7=True) | Q(lev8=True) | Q(lev9=True)).values_list('id_rfq', flat=True)
+                queryset = RFQ_Base.objects.filter(id_rfq__in=estados_ids)
+                
+            elif tipo_vista == 'draft':
+                rfqs_lev6_ids = Status_RFQ.objects.filter(id_rfq__in=rfqs_asignados_ids, lev6=True).values_list('id_rfq', flat=True)
+                
+                tiene_costos_mold = MOLD_COSTBR_P1_S.objects.filter(id_rfq_id__in=rfqs_lev6_ids, Elaborated_by=user.username).values_list('id_rfq_id', flat=True)
+                tiene_costos_die = DIE_COSTBR_P1_S.objects.filter(id_rfq_id__in=rfqs_lev6_ids, Elaborated_by=user.username).values_list('id_rfq_id', flat=True)
+                rfqs_con_progreso = set(tiene_costos_mold) | set(tiene_costos_die)
+
+                queryset = RFQ_Base.objects.filter(id_rfq__in=rfqs_con_progreso)
+
+        # ── 4. SERIALIZACIÓN E INYECCIÓN DE DETALLES TÉCNICOS ───────────────
+        serializer = RFQBaseSerializer(queryset, many=True)
+        data = serializer.data  # Convertimos a lista de diccionarios
+
+        # Reciclamos tu excelente lógica de inyección técnica para TODAS las vistas
         for item in data:
             rfq_id = item.get('id_rfq')
             rfq_type = item.get('type')
 
             if rfq_type == 'mold':
-                # Consultamos la tabla de moldes
                 detalles = MOLD_INFO_P1_I.objects.filter(id_rfq_id=rfq_id).values().first()
                 item['detalles_tecnicos'] = detalles if detalles else {}
-            
             elif rfq_type == 'die':
-                # Consultamos la tabla de troqueles
                 detalles = DIE_TRIM_I.objects.filter(id_rfq_id=rfq_id).values().first()
                 item['detalles_tecnicos'] = detalles if detalles else {}
-            
             else:
                 item['detalles_tecnicos'] = {}
 
-        # 3. Retornamos la respuesta modificada manualmente
-        return Response(data)
+        return Response(data, status=status.HTTP_200_OK)
 class ProveedorListView(generics.ListAPIView):
     serializer_class = ProveedorSerializer
     permission_classes = [IsAuthenticated,IsPurchasesUser]
