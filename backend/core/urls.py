@@ -7,7 +7,7 @@ from api.views import (
     RFQAprobadosListView, ProveedorListView, AssignSuppliersRFQView, 
     CrearRFQView, EditarRFQView, CotizacionProveedorView, BuzonProveedorListView, 
     AprobarRechazarProveedoresView, RFQPendientesAprobacionComprasListView, ReviewRFQIndView, 
-    SelectWinningSupplierView, FalloFinalGerencialView, DescargarArchivoSeguroView, ComparativaCotizacionesView, DashboardComprasView, DashboardIndustrializacionView , DashboardProveedorView
+    SelectWinningSupplierView, FalloFinalGerencialView, DescargarArchivoSeguroView, ComparativaCotizacionesView, DashboardComprasView, DashboardIndustrializacionView , DashboardProveedorView, RFQClasificadoListView
 
 )
 router = DefaultRouter()
@@ -25,6 +25,7 @@ urlpatterns = [
     path('rfqs/pendientes-compras/', RFQAprobadosListView.as_view(), name='rfqs-aprobados'),
     path('api/rfqs/pendientes-aprobacion-gerencia/', RFQPendientesAprobacionComprasListView.as_view(), name='rfqs-pendientes-gerencia'),
     path('rfq/crear/', CrearRFQView.as_view(), name='rfq-crear'),
+    path('api/rfqs/lista/', RFQClasificadoListView.as_view(), name='rfqs-clasificados'),
     path('api/dashboard/proveedor/', DashboardProveedorView.as_view(), name='dash-proveedor'),
     path('api/dashboard/compras/', DashboardComprasView.as_view(), name='dash-compras'),
     path('api/dashboard/industrializacion/', DashboardIndustrializacionView.as_view(), name='dash-ind'),
