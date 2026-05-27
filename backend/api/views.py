@@ -291,10 +291,11 @@ class DescargarArchivoSeguroView(APIView):
         response['Content-Disposition'] = f'attachment; filename="{archivo_obj.nombre}"'
         
         return response
+
 class RFQClasificadoListView(APIView):
     """
     Endpoint dinámico para listar RFQs filtrados por Rol del usuario
-    y Tipo de Vista (all, draft).
+    y Tipo de Vista (all, draft, not_answered).
     Incluye inyección de detalles técnicos.
     """
     permission_classes = [IsAuthenticated]
@@ -304,9 +305,10 @@ class RFQClasificadoListView(APIView):
         grupos = list(user.groups.values_list('name', flat=True))
         tipo_vista = request.query_params.get('vista', 'all').lower()
         
-        if tipo_vista not in ['all', 'draft']:
+        # 1. Agregado 'not_answered' a los parámetros permitidos
+        if tipo_vista not in ['all', 'draft', 'not_answered']:
             return Response(
-                {"error": "Parámetro 'vista' inválido. Use 'all' o 'draft'."},
+                {"error": "Parámetro 'vista' inválido. Use 'all', 'draft' o 'not_answered'."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -323,6 +325,10 @@ class RFQClasificadoListView(APIView):
             elif tipo_vista == 'draft':
                 estados_ids = Status_RFQ.objects.filter(lev2=True).values_list('id_rfq', flat=True)
                 queryset = RFQ_Base.objects.filter(id_rfq__in=estados_ids, created_by=user.username)
+            
+            # Industrialización no tiene vista 'not_answered'
+            elif tipo_vista == 'not_answered':
+                queryset = RFQ_Base.objects.none()
 
         # ── 2. FILTROS PARA COMPRAS ─────────────────────────────────────────
         elif 'Purchases' in grupos or 'Purchases_Admin' in grupos:
@@ -336,6 +342,13 @@ class RFQClasificadoListView(APIView):
                 rfqs_lev4 = Status_RFQ.objects.filter(lev4=True).values_list('id_rfq', flat=True)
                 rfqs_con_proveedor = RFQ_Assignment.objects.filter(id_rfq_id__in=rfqs_lev4).values_list('id_rfq_id', flat=True)
                 queryset = RFQ_Base.objects.filter(id_rfq__in=rfqs_con_proveedor)
+
+            # Lógica para 'not_answered' en Compras
+            elif tipo_vista == 'not_answered':
+                rfqs_lev4 = Status_RFQ.objects.filter(lev4=True).values_list('id_rfq', flat=True)
+                rfqs_con_proveedor = RFQ_Assignment.objects.filter(id_rfq_id__in=rfqs_lev4).values_list('id_rfq_id', flat=True)
+                # Filtra lev4 y excluye los que ya tienen proveedor
+                queryset = RFQ_Base.objects.filter(id_rfq__in=rfqs_lev4).exclude(id_rfq__in=rfqs_con_proveedor)
 
         # ── 3. FILTROS PARA PROVEEDORES ─────────────────────────────────────
         elif 'Supplier' in grupos:
@@ -356,11 +369,22 @@ class RFQClasificadoListView(APIView):
 
                 queryset = RFQ_Base.objects.filter(id_rfq__in=rfqs_con_progreso)
 
+            # Lógica para 'not_answered' en Proveedores
+            elif tipo_vista == 'not_answered':
+                rfqs_lev6_ids = Status_RFQ.objects.filter(id_rfq__in=rfqs_asignados_ids, lev6=True).values_list('id_rfq', flat=True)
+                
+                tiene_costos_mold = MOLD_COSTBR_P1_S.objects.filter(id_rfq_id__in=rfqs_lev6_ids, Elaborated_by=user.username).values_list('id_rfq_id', flat=True)
+                tiene_costos_die = DIE_COSTBR_P1_S.objects.filter(id_rfq_id__in=rfqs_lev6_ids, Elaborated_by=user.username).values_list('id_rfq_id', flat=True)
+                rfqs_con_progreso = set(tiene_costos_mold) | set(tiene_costos_die)
+                
+                # Excluye aquellos donde ya hay progreso de costos guardado
+                queryset = RFQ_Base.objects.filter(id_rfq__in=rfqs_lev6_ids).exclude(id_rfq__in=rfqs_con_progreso)
+
         # ── 4. SERIALIZACIÓN E INYECCIÓN DE DETALLES TÉCNICOS ───────────────
         serializer = RFQBaseSerializer(queryset, many=True)
         data = serializer.data  # Convertimos a lista de diccionarios
 
-        # Reciclamos tu excelente lógica de inyección técnica para TODAS las vistas
+        # Inyección técnica
         for item in data:
             rfq_id = item.get('id_rfq')
             rfq_type = item.get('type')
@@ -375,6 +399,7 @@ class RFQClasificadoListView(APIView):
                 item['detalles_tecnicos'] = {}
 
         return Response(data, status=status.HTTP_200_OK)
+
 class ProveedorListView(generics.ListAPIView):
     serializer_class = ProveedorSerializer
     permission_classes = [IsAuthenticated,IsPurchasesUser]
