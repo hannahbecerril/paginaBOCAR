@@ -229,7 +229,7 @@ Returns RFQs filtered by the authenticated user's role and optional `vista` quer
 
 **Role behavior:**
 - `Industrialization` / `Industrialization_Admin` / `SuperAdmin`:
-  - `all` → RFQs in lev4–lev9
+  - `all` → RFQs in lev4 and lev6–lev9 (**lev5 is excluded** — RFQs awaiting Purchases_Admin approval are not surfaced to Ind. users)
   - `draft` → own RFQs in lev2
 - `Purchases` / `Purchases_Admin`:
   - `all` → RFQs in lev6–lev9

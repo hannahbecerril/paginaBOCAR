@@ -82,13 +82,41 @@ Both gates are protecting a **department boundary** (Ind→Purchases and Purchas
 - Multi-supplier RFQs will almost always reach `lev7` with incomplete quotes.
 - The comparative analysis in `ComparativaCotizacionesView` will silently include only the one supplier who responded in time.
 
-### 3.2 `FalloFinalGerencialView` crashes when multiple suppliers are assigned
+### 3.2 `FalloFinalGerencialView` has three compounding bugs
 
-`views.py:220` calls `get_object_or_404(RFQ_Assignment, id_rfq=rfq_base)` without any further filter. When more than one supplier is assigned to the RFQ, Django's ORM raises `MultipleObjectsReturned`, which is an unhandled exception that produces a 500 error. The query must be filtered by `is_winner=True`.
+**Bug A — `MultipleObjectsReturned` crash:** `views.py:220` calls `get_object_or_404(RFQ_Assignment, id_rfq=rfq_base)` without any further filter. When more than one supplier is assigned to the RFQ, Django's ORM raises `MultipleObjectsReturned` → 500 error. The query must be filtered by `is_winner=True`.
 
-### 3.3 Supplier assignment deletion can orphan initialized cost records
+**Bug B — `AttributeError` on the "aprobar" path:** The response at `views.py:266` returns `asignacion.winning_supplier`, but the `RFQ_Assignment` model has no `winning_supplier` field — the correct field is `is_winner` (a BooleanField). On the "aprobar" path, `winning_supplier` is never assigned to the Python object, so accessing it raises `AttributeError` → 500 error.
+
+**Bug C — Silent no-op on the "rechazar" path:** On rejection, `views.py:248` sets `asignacion.winning_supplier = None`. Since `winning_supplier` is not a model field, `save()` ignores it (no DB change). The winner flag is never actually cleared. The correct fix is `asignacion.is_winner = False` (matching what `SelectWinningSupplierView` sets).
+
+### 3.3 `ReviewRFQIndView` never records state transitions in `RFQ_Tracking`
+
+Unlike every other state-transition view, `ReviewRFQIndView` (`views.py:978`) sets a local `nivel_alcanzado` variable to `'lev4'` or `'lev2'` but **never calls `registrar_tracking_rfq`**. The dashboard KPI in `DashboardIndustrializacionView` (`views.py:173`) queries `RFQ_Tracking` for `nivel_alcanzado='lev4'` entries to compute `lead_time_tecnico_dias`. Since no lev4 tracking rows are ever written for the Industrialization approval path, this KPI always returns 0.
+
+### 3.4 Supplier assignment deletion can orphan initialized cost records
 
 `AssignSuppliersRFQView.put` (`views.py:421`) calls `RFQ_Assignment.objects.filter(id_rfq=rfq).delete()` before re-creating assignments. The same view also initializes `MOLD_COSTBR_I` / `DIE_COSTBR_I` rows per supplier. If `Purchases_Admin` rejects the list (lev5 → lev4) and the buyer re-submits with a different selection, the assignment rows are deleted but the cost breakdown records they reference are not — they are orphaned in the database with no `RFQ_Assignment` parent to point to.
+
+---
+
+### 3.5 `Suppliers` table and Django `User` table are used interchangeably but have independent IDs
+
+The system has two separate representations of a supplier:
+
+- **`Suppliers` model** (`base.py:74`) — a custom table with its own `id` primary key, `name`, `email`, `phone`.
+- **Django `User` model** — used for authentication. Suppliers log in through `LoginProveedorView` as `User` records in the `Supplier` group.
+
+These tables are not linked. The following mismatches exist:
+
+| View | Table used | What it expects |
+|------|-----------|-----------------|
+| `ProveedorListView` (list suppliers) | Django `User` | Returns `User.id` as the supplier ID |
+| `AssignSuppliersRFQView` (assign suppliers) | `Suppliers` table | Expects `Suppliers.id` from `proveedores_ids` |
+| `BuzonProveedorListView` (supplier inbox) | `RFQ_Assignment.supplier_id` (→ `Suppliers.id`) | Uses `request.user.id` (Django `User.id`) |
+| `DashboardProveedorView` | `RFQ_Assignment.supplier__email` (→ `Suppliers.email`) | Matches by email against Django User's email |
+
+In practice: the frontend receives Django User IDs from the list endpoint, sends them to the assignment endpoint which looks them up in the `Suppliers` table — a completely different set of IDs. Assignments will either fail validation (`proveedores_validos` returns empty) or silently reference the wrong supplier record. The supplier's own inbox and dashboard are similarly broken because they use `request.user.id` as a `Suppliers` table key.
 
 ---
 
@@ -117,3 +145,21 @@ The database file is tracked by git. Every branch merge that touches migration f
 ### 5.2 `ReviewRFQIndView` permission class is `IsAuthenticated` only
 
 The view gate is `permission_classes = [IsAuthenticated]` and then does a manual `if 'Industrialization_Admin' not in grupos_usuario` check inside the method body. This is inconsistent with every other view in the codebase and is easy to miss during a code review.
+
+---
+
+## 6. Dead / Unused Models
+
+The following models are defined and exported in `api/models/__init__.py` but are not referenced in any view, serializer, or admin registration. They add schema noise and create migration overhead without serving any current functionality:
+
+| Model | File | Notes |
+|-------|------|-------|
+| `Users_Permissions` | `base.py` | CRUD permission flags per user — superseded by Django Groups |
+| `Attachments` | `base.py` | File attachments via ForeignKey to `RFQ_Base` — active file handling uses `Archivo` instead |
+| `Suppliers` | `base.py` | Custom supplier table — authentication uses Django `User` (see Risk 3.5) |
+| `MOLD_INFO_P1_S` / `MOLD_INFO_P2_S` | `mold_info_s.py` | Supplier-side mold info sheets — no view reads or writes these |
+| `MOLD_CAVITIES_P1_S` / `P2_S` / `P3_S` | `mold_cavities_s.py` | Cavity data for mold quotes — no view references these |
+| `DIE_TRIM_S` | `die_trim_s.py` | Supplier-side die trim data — no view references this |
+| `Bitacora` | `bitacora.py` | Audit log — no view reads or writes it |
+
+These models should either be wired into views and serializers or removed from the schema to avoid confusion about which tables are live.
