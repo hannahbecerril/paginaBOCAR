@@ -2,7 +2,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import TableComponent from '../../components/layout/TableComponent';
-import rfqsData from '../rfqs-data.json';
+import { getPurchasesInbox } from '../api';
 
 export default function NotAnsweredRFQ() {
     const navigate = useNavigate();
@@ -10,18 +10,15 @@ export default function NotAnsweredRFQ() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        // Filter to all productive RFQs (excluding drafts)
-        const notAnsweredStatuses = ['sent to purchases'];
-        const filteredRfqs = rfqsData.rfqs
-            .filter(rfq => notAnsweredStatuses.includes(rfq.status.toLowerCase()))
-            .map(rfq => ({
+        getPurchasesInbox().then(rfqs => {
+            setRfqList(rfqs.map(rfq => ({
                 id: rfq.id,
                 title: rfq.title,
                 category: rfq.category,
                 last_modified: rfq.lastModified
-            }));
-        setRfqList(filteredRfqs);
-        setLoading(false);
+            })));
+            setLoading(false);
+        });
     }, []);
 
     const columns = [
@@ -30,7 +27,6 @@ export default function NotAnsweredRFQ() {
         { key: 'category', label: 'Category', type: 'badge', sortable: true, filterable: true },
         { key: 'last_modified', label: 'Last Modified', type: 'time', sortable: true, filterable: true },
     ];
-
 
     const handleRowClick = (row) => {
         navigate(`/Purchases/rfq/${row.id}`);

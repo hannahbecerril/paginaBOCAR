@@ -1,8 +1,8 @@
-// sections/Industrialization/Users.jsx
+// sections/Purchases/Users.jsx
 import { useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import TableComponent from '../../components/layout/TableComponent';
-import usersData from '../users-data.json';
+import { getUsers } from '../api';
 
 export default function Users() {
     const navigate = useNavigate();
@@ -10,28 +10,21 @@ export default function Users() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        // Simulate API fetch
-        setTimeout(() => {
-            // Transform JSON data to table format
-            const formattedUsers = usersData.users.map(user => ({
+        getUsers().then(data => {
+            setUsers(data.map(user => ({
                 id: user.id,
                 name: user.name,
                 email: user.email,
                 role: user.role,
                 lastAccess: user.lastLogin,
                 status: user.status
-            }));
-            setUsers(formattedUsers);
+            })));
             setLoading(false);
-        }, 300);
+        });
     }, []);
 
     const handleRowClick = (row) => {
-        navigate(`/Industrialization/user/${row.id}`);
-    };
-
-    const handleAddUser = () => {
-        navigate('/Industrialization/user/new-user');
+        navigate(`/Purchases/user/${row.id}`);
     };
 
     const columns = [
@@ -60,7 +53,7 @@ export default function Users() {
             data={users}
             columns={columns}
             onClickRow={handleRowClick}
-            onAdd={handleAddUser}
+            onAdd={() => navigate('/Purchases/user/new-user')}
             onEdit={(row) => console.log('Edit', row)}
             onDelete={(row) => console.log('Delete', row)}
         />

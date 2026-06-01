@@ -1,8 +1,8 @@
-// sections/SuppliersList.jsx
+// sections/Purchases/SuppliersList.jsx
 import { useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import TableComponent from '../../components/layout/TableComponent';
-import suppliersData from '../suppliers-data.json';
+import { getSuppliers } from '../api';
 
 export default function Suppliers() {
     const navigate = useNavigate();
@@ -10,28 +10,21 @@ export default function Suppliers() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        // Simulate API fetch
-        setTimeout(() => {
-            // Transform JSON data to table format
-            const formattedSuppliers = suppliersData.suppliers.map(supplier => ({
+        getSuppliers().then(data => {
+            setSuppliers(data.map(supplier => ({
                 id: supplier.id,
                 name: supplier.name,
                 email: supplier.email,
                 role: supplier.role,
                 lastLogin: supplier.lastLogin,
                 status: supplier.status
-            }));
-            setSuppliers(formattedSuppliers);
+            })));
             setLoading(false);
-        }, 300);
+        });
     }, []);
 
     const handleRowClick = (row) => {
         navigate(`/Purchases/supplier/${row.id}`);
-    };
-
-    const handleAddUser = () => {
-        navigate('/Purchases/supplier/new-supplier');
     };
 
     const columns = [
@@ -60,7 +53,7 @@ export default function Suppliers() {
             data={suppliers}
             columns={columns}
             onClickRow={handleRowClick}
-            onAdd={handleAddUser}
+            onAdd={() => navigate('/Purchases/supplier/new-supplier')}
             onEdit={(row) => console.log('Edit', row)}
             onDelete={(row) => console.log('Delete', row)}
         />

@@ -1,28 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Cookies from 'js-cookie';
 import Input from '../../components/ui/Input';
 import Button from '../../components/ui/Button';
 import UploadCard from '../../components/ui/UploadCard';
-import { CheckCircle, AlertCircle, ChevronRight, ChevronLeft, Save, Send } from 'lucide-react';
+import { CheckCircle, AlertCircle, ChevronRight, ChevronLeft, Save, Send, RefreshCw } from 'lucide-react';
+import { getRFQFormConfig } from '../api';
 
 const API_BASE = 'http://127.0.0.1:8000';
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-const yesNoOptions = [
-    { value: 'Yes', label: 'Yes' },
-    { value: 'No', label: 'No' },
-    { value: 'Defined by toolmaker', label: 'Defined by toolmaker' },
-];
-
-const yesNoSimple = [
-    { value: 'Yes', label: 'Yes' },
-    { value: 'No', label: 'No' },
-];
-
-const trimConditionOptions = [
-    { value: 'Cold', label: 'Cold' },
-    { value: 'Hot', label: 'Hot' },
-];
 
 // ── Sub-componentes del formulario ────────────────────────────────────────────
 function SectionTitle({ children }) {
@@ -62,92 +46,44 @@ function CheckRow({ label, field, notes, onCheck, onNote }) {
     );
 }
 
-// ── Estado inicial ────────────────────────────────────────────────────────────
-const initDieTrim = () => ({
-    DESC: '', PPY: '', CUST: '', PT_No: '', PROJ_L: '', DTQB: '',
-    Press: '', No_cavities: '1x', No_hydra_slides: 'Defined by toolmaker',
-    Ful_Auto_proc: 'Yes', Presence_Detec: 'Yes', Trim_proc: 'Cold',
-    Pun_pins_req: 'Yes', Admissible_res_burr_mm: '0.2',
-    Castings_supp: 'Yes', Adjust_opt_tool_maker: 'Yes',
-    Gas_spri: 'Defined by toolmaker',
-});
-
-const initDieBooleans = () => ({
-    Desi_3D: { checked: false, note: '' },
-    Desi_2D: { checked: false, note: '' },
-    Punch_Data: { checked: false, note: '' },
-    Manu_Propo: { checked: false, note: '' },
-    Late_trim_imp: { checked: false, note: '' },
-    Sketch_die: { checked: false, note: '' },
-    Trim_No_1: { checked: false, note: '' },
-    Trim_No_2: { checked: false, note: '' },
-    Set_spare: { checked: false, note: '' },
-    Hydra_Cylin_switch: { checked: false, note: '' },
-    Frame_Refur: { checked: false, note: '' },
-    Set_elec_wires: { checked: false, note: '' },
-    Others: { checked: false, note: '' },
-    Deli_date: { checked: false, note: '' },
-    Ejec_syst_fix: { checked: false, note: '' },
-});
-
-const initMoldP1 = () => ({
-    DESC: '', PPY: '', CUST: '', PT: '', PNUM: '', PRLF: '', TT: '', DTQ: '',
-    ELAB: '', Smach: '', No_CAV: '1x', No_ofHS: 'Defined by toolmaker',
-    No_ofMS: 'Defined by toolmaker', ThirdPSupp: '', No_subc: '',
-    Jco: '', QcSys: '', Ihtcs: '', Spin: '', HICS: '', CMGOM: '',
-    SPforThermoR: '', NReturnV: '', VacV: '', ChillBl: '', No_PlJcosys: '', Oth: '',
-});
-
-const initMoldP2 = () => ({
-    ThreeD: { checked: false, note: '' },
-    FlAn: { checked: false, note: '' },
-    Run_des: { checked: false, note: '' },
-    Run_and_over_mod: { checked: false, note: '' },
-    ManProp: { checked: false, note: '' },
-    Ldi: { checked: false, note: '' },
-    Add_of_mach_st: { checked: false, note: '' },
-    Sketch_d_conc_inc_s_dim: { checked: false, note: '' },
-    TwoDDrDes: { checked: false, note: '' },
-    ThreeDDModSolid: { checked: false, note: '' },
-    Eyeb: { checked: false, note: '' },
-    OW_Conn: { checked: false, note: '' },
-    STM_1_2: { checked: false, note: '' },
-    CMM_dim_rep_cai: { checked: false, note: '' },
-    GOM_rep: { checked: false, note: '' },
-    H_val_subc_in: { checked: false, note: '' },
-    Dim_corr_opt: { checked: false, note: '' },
-    Sp_Pt: { checked: false, note: '' },
-    Comp_D: { checked: false, note: '' },
-    Subseq_D: { checked: false, note: '' },
-    Set_of_repl_H13: { checked: false, note: '' },
-    Sp_set_of_EI: { checked: false, note: '' },
-    FICF: { checked: false, note: '' },
-    HCLS: { checked: false, note: '' },
-    Fr_Refur: { checked: false, note: '' },
-});
-
 // ── Componente principal ──────────────────────────────────────────────────────
 export default function RFQForm() {
     const [step, setStep] = useState(1);
     const TOTAL_STEPS = 3;
 
+    // Form config loaded from api.js
+    const [formConfig, setFormConfig] = useState(null);
+
     // Step 1 - General
     const [general, setGeneral] = useState({ tool: '', type: '' });
 
     // Step 2 - Die data
-    const [dieTrim, setDieTrim] = useState(initDieTrim());
-    const [dieBooleans, setDieBooleans] = useState(initDieBooleans());
+    const [dieTrim, setDieTrim] = useState(null);
+    const [dieBooleans, setDieBooleans] = useState(null);
 
     // Step 2 - Mold data
-    const [moldP1, setMoldP1] = useState(initMoldP1());
-    const [moldP2, setMoldP2] = useState(initMoldP2());
+    const [moldP1, setMoldP1] = useState(null);
+    const [moldP2, setMoldP2] = useState(null);
 
     // Step 3 - Files
     const [files, setFiles] = useState({ pdf: null, ppt: null, cad: null });
 
     // UI state
     const [loading, setLoading] = useState(false);
+    const [configLoading, setConfigLoading] = useState(true);
     const [feedback, setFeedback] = useState(null); // { type: 'success'|'error', message }
+
+    // Load form config and initialize defaults on mount
+    useEffect(() => {
+        getRFQFormConfig().then(cfg => {
+            setFormConfig(cfg);
+            setDieTrim(JSON.parse(JSON.stringify(cfg.defaults.dieTrim)));
+            setDieBooleans(JSON.parse(JSON.stringify(cfg.defaults.dieBooleans)));
+            setMoldP1(JSON.parse(JSON.stringify(cfg.defaults.moldP1)));
+            setMoldP2(JSON.parse(JSON.stringify(cfg.defaults.moldP2)));
+            setConfigLoading(false);
+        });
+    }, []);
 
     // ── Handlers ──────────────────────────────────────────────────────────────
     const setDieField = (key, val) => setDieTrim(p => ({ ...p, [key]: val }));
@@ -245,14 +181,13 @@ export default function RFQForm() {
             });
 
             if (!isDraft) {
-                // Reset form after final submission
                 setTimeout(() => {
                     setStep(1);
                     setGeneral({ tool: '', type: '' });
-                    setDieTrim(initDieTrim());
-                    setDieBooleans(initDieBooleans());
-                    setMoldP1(initMoldP1());
-                    setMoldP2(initMoldP2());
+                    setDieTrim(JSON.parse(JSON.stringify(formConfig.defaults.dieTrim)));
+                    setDieBooleans(JSON.parse(JSON.stringify(formConfig.defaults.dieBooleans)));
+                    setMoldP1(JSON.parse(JSON.stringify(formConfig.defaults.moldP1)));
+                    setMoldP2(JSON.parse(JSON.stringify(formConfig.defaults.moldP2)));
                     setFiles({ pdf: null, ppt: null, cad: null });
                     setFeedback(null);
                 }, 3000);
@@ -264,8 +199,21 @@ export default function RFQForm() {
         }
     };
 
+    // ── Loading guard ────────────────────────────────────────────────────────
+    if (configLoading) {
+        return (
+            <div className="flex items-center justify-center min-h-screen" style={{ backgroundColor: 'var(--background-secondary)' }}>
+                <div className="text-center">
+                    <RefreshCw size={24} style={{ color: 'var(--text-tertiary)' }} className="animate-spin mx-auto" />
+                    <p className="text-sm mt-2" style={{ color: 'var(--text-tertiary)' }}>Loading form...</p>
+                </div>
+            </div>
+        );
+    }
+
     // ── Render helpers ────────────────────────────────────────────────────────
     const stepLabels = ['General Info', 'Technical Specs', 'Required Data & Files'];
+    const { options } = formConfig;
 
     return (
         <div className="min-h-screen" style={{ backgroundColor: 'var(--background-secondary)' }}>
@@ -338,10 +286,7 @@ export default function RFQForm() {
                                 variant="select"
                                 value={general.type}
                                 onChange={e => setGeneral(p => ({ ...p, type: e.target.value }))}
-                                options={[
-                                    { value: 'die', label: 'Trim Die' },
-                                    { value: 'mold', label: 'Mold' },
-                                ]}
+                                options={options.toolType}
                                 required
                             />
                         </div>
@@ -383,43 +328,38 @@ export default function RFQForm() {
                                 <Input label="Number of Hydraulic Slides"
                                     variant="select" value={dieTrim.No_hydra_slides}
                                     onChange={e => setDieField('No_hydra_slides', e.target.value)}
-                                    options={[
-                                        { value: 'Defined by toolmaker', label: 'Defined by toolmaker' },
-                                        { value: '0', label: '0' }, { value: '1', label: '1' },
-                                        { value: '2', label: '2' }, { value: '3', label: '3' },
-                                        { value: '4+', label: '4+' },
-                                    ]} />
+                                    options={options.hydraulicSlides} />
                                 <Input label="Fully Automatic Process"
                                     variant="select" value={dieTrim.Ful_Auto_proc}
                                     onChange={e => setDieField('Ful_Auto_proc', e.target.value)}
-                                    options={yesNoSimple} />
+                                    options={options.yesNoSimple} />
                                 <Input label="Presence Detectors"
                                     variant="select" value={dieTrim.Presence_Detec}
                                     onChange={e => setDieField('Presence_Detec', e.target.value)}
-                                    options={yesNoSimple} />
+                                    options={options.yesNoSimple} />
                                 <Input label="Trimming Process Condition"
                                     variant="select" value={dieTrim.Trim_proc}
                                     onChange={e => setDieField('Trim_proc', e.target.value)}
-                                    options={trimConditionOptions} />
+                                    options={options.trimCondition} />
                                 <Input label="Punch Pins Required"
                                     variant="select" value={dieTrim.Pun_pins_req}
                                     onChange={e => setDieField('Pun_pins_req', e.target.value)}
-                                    options={yesNoSimple} />
+                                    options={options.yesNoSimple} />
                                 <Input label="Admissible Residual Burr (mm)" type="number" placeholder="E.g., 0.2"
                                     value={dieTrim.Admissible_res_burr_mm}
                                     onChange={e => setDieField('Admissible_res_burr_mm', e.target.value)} />
                                 <Input label="Castings Supplied by"
                                     variant="select" value={dieTrim.Castings_supp}
                                     onChange={e => setDieField('Castings_supp', e.target.value)}
-                                    options={yesNoSimple} />
+                                    options={options.yesNoSimple} />
                                 <Input label="Adjustments at Tool Maker's Facilities"
                                     variant="select" value={dieTrim.Adjust_opt_tool_maker}
                                     onChange={e => setDieField('Adjust_opt_tool_maker', e.target.value)}
-                                    options={yesNoSimple} />
+                                    options={options.yesNoSimple} />
                                 <Input label="Gas Springs"
                                     variant="select" value={dieTrim.Gas_spri}
                                     onChange={e => setDieField('Gas_spri', e.target.value)}
-                                    options={yesNoOptions} />
+                                    options={options.yesNo} />
                             </div>
                         </div>
                     </div>
@@ -624,7 +564,6 @@ export default function RFQForm() {
                         )}
                     </div>
                     <div className="flex gap-3">
-                        {/* Save as Draft — available from step 2 onwards */}
                         {step >= 2 && (
                             <Button variant="outline" onClick={() => submitRFQ(true)} disabled={loading}>
                                 <Save size={16} />

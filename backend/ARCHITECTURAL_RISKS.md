@@ -86,9 +86,9 @@ Both gates are protecting a **department boundary** (Ind→Purchases and Purchas
 
 **Bug A — `MultipleObjectsReturned` crash:** `views.py:220` calls `get_object_or_404(RFQ_Assignment, id_rfq=rfq_base)` without any further filter. When more than one supplier is assigned to the RFQ, Django's ORM raises `MultipleObjectsReturned` → 500 error. The query must be filtered by `is_winner=True`.
 
-**Bug B — `AttributeError` on the "aprobar" path:** The response at `views.py:266` returns `asignacion.winning_supplier`, but the `RFQ_Assignment` model has no `winning_supplier` field — the correct field is `is_winner` (a BooleanField). On the "aprobar" path, `winning_supplier` is never assigned to the Python object, so accessing it raises `AttributeError` → 500 error.
+**Bug B — `AttributeError` on the "aprobar" path:** The response at `views.py:266` returns `asignacion.winning_supplier`, but the `RFQ_Assignment` model has no `winning_supplier` field — migration `0007` removed it and replaced it with `is_winner` (BooleanField), but `views.py` was never updated. On the "aprobar" path, `winning_supplier` is never set on the Python object, so accessing it raises `AttributeError` → 500 error.
 
-**Bug C — Silent no-op on the "rechazar" path:** On rejection, `views.py:248` sets `asignacion.winning_supplier = None`. Since `winning_supplier` is not a model field, `save()` ignores it (no DB change). The winner flag is never actually cleared. The correct fix is `asignacion.is_winner = False` (matching what `SelectWinningSupplierView` sets).
+**Bug C — Silent no-op on the "rechazar" path:** On rejection, `views.py:248` sets `asignacion.winning_supplier = None`. Since `winning_supplier` is no longer a model field, `save()` ignores it (no DB change). The winner flag is never actually cleared. The correct fix is `asignacion.is_winner = False`.
 
 ### 3.3 `ReviewRFQIndView` never records state transitions in `RFQ_Tracking`
 
@@ -97,8 +97,6 @@ Unlike every other state-transition view, `ReviewRFQIndView` (`views.py:978`) se
 ### 3.4 Supplier assignment deletion can orphan initialized cost records
 
 `AssignSuppliersRFQView.put` (`views.py:421`) calls `RFQ_Assignment.objects.filter(id_rfq=rfq).delete()` before re-creating assignments. The same view also initializes `MOLD_COSTBR_I` / `DIE_COSTBR_I` rows per supplier. If `Purchases_Admin` rejects the list (lev5 → lev4) and the buyer re-submits with a different selection, the assignment rows are deleted but the cost breakdown records they reference are not — they are orphaned in the database with no `RFQ_Assignment` parent to point to.
-
----
 
 ### 3.5 `Suppliers` table and Django `User` table are used interchangeably but have independent IDs
 
@@ -116,7 +114,23 @@ These tables are not linked. The following mismatches exist:
 | `BuzonProveedorListView` (supplier inbox) | `RFQ_Assignment.supplier_id` (→ `Suppliers.id`) | Uses `request.user.id` (Django `User.id`) |
 | `DashboardProveedorView` | `RFQ_Assignment.supplier__email` (→ `Suppliers.email`) | Matches by email against Django User's email |
 
-In practice: the frontend receives Django User IDs from the list endpoint, sends them to the assignment endpoint which looks them up in the `Suppliers` table — a completely different set of IDs. Assignments will either fail validation (`proveedores_validos` returns empty) or silently reference the wrong supplier record. The supplier's own inbox and dashboard are similarly broken because they use `request.user.id` as a `Suppliers` table key.
+In practice: the frontend receives Django User IDs from the list endpoint, sends them to the assignment endpoint which looks them up in the `Suppliers` table — a completely different set of IDs. Assignments will either fail validation (`proveedores_validos` returns empty) or silently reference the wrong supplier record. The supplier's own inbox and dashboard are similarly broken.
+
+### 3.6 Migration desync: `Elaborated_by` removed from mold cost models P2–P5, views never updated
+
+Migration `0007` (2026-05-21) removed `Elaborated_by` from `MOLD_COSTBR_P2_S`, `P3_S`, `P4_S`, and `P5_S`. The views were not updated. Two views are now broken for any mold RFQ that includes cost data beyond part 1:
+
+**`CotizacionProveedorView`** (`views.py:807–813`): for each mold cost block, calls
+```python
+model.objects.update_or_create(
+    id_rfq=rfq_base, Elaborated_by=proveedor_identificador, defaults=cost_data
+)
+```
+`Elaborated_by` no longer exists on P2–P5, so this raises `FieldError: Cannot resolve keyword 'Elaborated_by'` → 500 error for any supplier submitting `mold_cost_p2` through `mold_cost_p5`.
+
+**`ComparativaCotizacionesView`** (`views.py:876`): filters all mold parts by `Elaborated_by=username`. Raises the same `FieldError` for parts 2–5 whenever the comparative view is accessed for a mold RFQ.
+
+The only functional paths currently are: mold cost part 1 (`MOLD_COSTBR_P1_S`, which still has `Elaborated_by`) and all die cost parts (`DIE_COSTBR_P1_S`–`P4_S`, which identify by `Elaborated_by` as a CharField).
 
 ---
 
@@ -134,6 +148,18 @@ The field is a free-form `CharField`. Anything can be stored — including typos
 
 The database file is tracked by git. Every branch merge that touches migration files risks producing an inconsistent SQLite file in the repository, and credentials or test data committed inside it are permanently visible in git history.
 
+### 4.4 Model definition bugs
+
+Several model files contain invalid or incorrect field definitions that create a gap between the Python model and the actual DB schema:
+
+**`DIE_COSTBR_I` — duplicate ForeignKey** (`die_costbr_i.py:7,9`): `id_rfq` is declared twice. The first declaration (`related_name='die_costbr_i'`) is immediately overwritten by the second (`related_name='die_costbr_i_rfq'`). The migration created only the second. The first is dead code.
+
+**`DIE_COSTBR_P1_S.Company`** (`die_costbr_p1_s.py:16`): `Company = models` assigns the `models` module itself as a class attribute instead of a Django field. Django's metaclass ignores it — no `Company` column exists in the database. The migration for this model confirms the field was never created.
+
+**`DIE_TRIM_S` — invalid field parameters** (`die_trim_s.py`):
+- `FloatField(max_length=255)` — `max_length` is not a valid kwarg for `FloatField` and is silently ignored.
+- `CharField(default=False)` — `False` (a bool) is cast to the string `"False"` as the default value, which is semantically wrong for fields like `Curr_Trim_1`, `SUPP`, `SIGN`, etc.
+
 ---
 
 ## 5. Permission Inconsistency
@@ -150,16 +176,43 @@ The view gate is `permission_classes = [IsAuthenticated]` and then does a manual
 
 ## 6. Dead / Unused Models
 
-The following models are defined and exported in `api/models/__init__.py` but are not referenced in any view, serializer, or admin registration. They add schema noise and create migration overhead without serving any current functionality:
+The following models are defined in `api/models/__init__.py` but are **not referenced in any view or serializer**. They add schema noise and carry migration overhead without serving any active functionality:
 
 | Model | File | Notes |
 |-------|------|-------|
-| `Users_Permissions` | `base.py` | CRUD permission flags per user — superseded by Django Groups |
-| `Attachments` | `base.py` | File attachments via ForeignKey to `RFQ_Base` — active file handling uses `Archivo` instead |
-| `Suppliers` | `base.py` | Custom supplier table — authentication uses Django `User` (see Risk 3.5) |
+| `Users_Permissions` | `base.py` | CRUD permission flags per user — superseded entirely by Django Groups |
+| `Attachments` | `base.py` | File attachments ForeignKey to `RFQ_Base` — active file handling uses `Archivo` instead |
+| `Suppliers` | `base.py` | Custom supplier table — authentication uses Django `User` (see Risk 3.5); never written to from any current view |
 | `MOLD_INFO_P1_S` / `MOLD_INFO_P2_S` | `mold_info_s.py` | Supplier-side mold info sheets — no view reads or writes these |
 | `MOLD_CAVITIES_P1_S` / `P2_S` / `P3_S` | `mold_cavities_s.py` | Cavity data for mold quotes — no view references these |
 | `DIE_TRIM_S` | `die_trim_s.py` | Supplier-side die trim data — no view references this |
-| `Bitacora` | `bitacora.py` | Audit log — no view reads or writes it |
 
-These models should either be wired into views and serializers or removed from the schema to avoid confusion about which tables are live.
+**Note on `Bitacora`:** This model IS active — `RegistroBitacoraMiddleware` (`middleware.py`) writes one row per `/api/` request, logging user, path, method, IP, and timestamp. However, there is no read endpoint to query audit log data through the API. The audit trail is collected but inaccessible from the frontend.
+
+These dead models should either be wired into views and serializers or removed from the schema to avoid confusion about which tables are live.
+
+---
+
+## 7. Security Configuration Risks
+
+### 7.1 `PROVEEDOR_SECRET_KEY` is a trivially guessable default committed in plain text
+
+`core/settings.py:157` sets `PROVEEDOR_SECRET_KEY = 'clave_secreta'`. This key is the HMAC secret used in `LoginProveedorView` to validate supplier login requests. It is committed in the repository, visible to anyone with repo access, and its value (`clave_secreta`) is trivially guessable. Any attacker can compute a valid `X-Signature` for any supplier credentials they obtain, completely bypassing the cryptographic gate. The key must be moved to an environment variable and rotated.
+
+### 7.2 `SECRET_KEY` is the insecure Django project default
+
+`core/settings.py:28` retains the `django-insecure-` prefixed key generated at project creation. This key signs JWT tokens, session cookies, and CSRF tokens. It should be replaced with a strong random value and never committed.
+
+### 7.3 `DEBUG = True` and `ALLOWED_HOSTS = []` are production-incompatible
+
+`DEBUG = True` causes Django to return full stack traces (including settings variables) on any unhandled exception. `ALLOWED_HOSTS = []` is only permissive in DEBUG mode — in production it would reject all requests. Neither setting is gated behind an environment variable, making it easy to accidentally deploy in an unsafe state.
+
+### 7.4 `dj_rest_auth` is installed but unused
+
+`INSTALLED_APPS` includes `dj_rest_auth`, `rest_framework.authtoken`, and `django.contrib.sites` (required by `dj_rest_auth`). None of these are used by any custom view in this project — authentication is handled entirely through the custom `LoginInternoView` / `LoginProveedorView` endpoints. The `dj_rest_auth` package registers additional session-based auth routes that are not documented and not protected by the role system, creating an undocumented auth surface.
+
+---
+
+## 8. Test Coverage
+
+`api/tests.py` is empty. There are no automated tests of any kind — no unit tests for business logic, no integration tests for the state machine transitions, no permission tests for role-gated endpoints. All of the bugs documented in §3 are undetectable without tests.

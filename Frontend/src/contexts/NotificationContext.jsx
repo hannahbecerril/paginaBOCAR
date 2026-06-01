@@ -1,6 +1,6 @@
 // contexts/NotificationContext.jsx
 import { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import notificationsData from '../sections/notis-data.json';
+import { getNotifications, NOTIFICATION_CATEGORIES } from '../sections/api';
 
 const NotificationContext = createContext();
 
@@ -12,54 +12,7 @@ export const useNotifications = () => {
     return context;
 };
 
-// Notification Categories
-export const NOTIFICATION_CATEGORIES = {
-    INDUSTRIALIZATION_DRAFT: {
-        id: 'industrialization_draft',
-        label: 'Industrialization Draft',
-        roles: ['industrialization']
-    },
-    SENT_TO_PURCHASES: {
-        id: 'sent_to_purchases',
-        label: 'Sent to Purchases',
-        roles: ['industrialization', 'purchases']
-    },
-    PURCHASES_DRAFT: {
-        id: 'purchases_draft',
-        label: 'Purchases Draft',
-        roles: ['purchases']
-    },
-    SENT_TO_SUPPLIERS: {
-        id: 'sent_to_suppliers',
-        label: 'Sent to Suppliers',
-        roles: ['purchases']
-    },
-    SUPPLIERS_DRAFT: {
-        id: 'suppliers_draft',
-        label: 'Suppliers Draft',
-        roles: ['suppliers']
-    },
-    SUPPLIERS_RESPONSE: {
-        id: 'suppliers_response',
-        label: 'Suppliers Response',
-        roles: ['purchases', 'suppliers']
-    },
-    WAITING_FOR_SUPPLIERS: {
-        id: 'waiting_for_suppliers',
-        label: 'Waiting for Suppliers',
-        roles: ['purchases']
-    },
-    SUPPLIER_SELECTED: {
-        id: 'supplier_selected',
-        label: 'Supplier Selected',
-        roles: ['industrialization', 'purchases', 'suppliers']
-    },
-    RFQ_CLOSED: {
-        id: 'rfq_closed',
-        label: 'RFQ Closed',
-        roles: ['industrialization', 'purchases', 'suppliers']
-    }
-};
+export { NOTIFICATION_CATEGORIES };
 
 // Get user role based on route
 export const getUserRoleFromPath = (pathname) => {
@@ -95,9 +48,9 @@ export const NotificationProvider = ({ children }) => {
 
     // Load notifications based on role
     const loadNotificationsForRole = useCallback((role) => {
-        const rawNotifications = notificationsData.notifications[role] || notificationsData.notifications.industrialization;
-        const notificationsWithCategory = attachCategoryToNotifications(rawNotifications);
-        setNotifications(notificationsWithCategory);
+        getNotifications(role).then(raw => {
+            setNotifications(attachCategoryToNotifications(raw));
+        });
     }, []);
 
     // Update user role when route changes

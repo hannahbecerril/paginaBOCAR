@@ -2,7 +2,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import TableComponent from '../../components/layout/TableComponent';
-import rfqsData from '../rfqs-data.json';
+import { getSuppliersAllRFQs } from '../api';
 
 export default function AllRFQ() {
     const navigate = useNavigate();
@@ -10,20 +10,17 @@ export default function AllRFQ() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        // Filter to all productive RFQs (excluding drafts)
-        const allRFQ = ['waiting for suppliers', 'supplier selected', 'rfq closed', 'supplier response'];
-        const filteredRfqs = rfqsData.rfqs
-            .filter(rfq => allRFQ.includes(rfq.status.toLowerCase()))
-            .map(rfq => ({
+        getSuppliersAllRFQs().then(rfqs => {
+            setRfqList(rfqs.map(rfq => ({
                 id: rfq.id,
                 title: rfq.title,
                 category: rfq.category,
                 priority: rfq.priority,
                 status: rfq.status,
                 last_modified: rfq.lastModified
-            }));
-        setRfqList(filteredRfqs);
-        setLoading(false);
+            })));
+            setLoading(false);
+        });
     }, []);
 
     const columns = [

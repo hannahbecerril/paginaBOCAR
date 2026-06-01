@@ -2,7 +2,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import TableComponent from '../../components/layout/TableComponent';
-import rfqsData from '../rfqs-data.json';
+import { getPurchasesDrafts } from '../api';
 
 export default function Drafts() {
     const navigate = useNavigate();
@@ -10,19 +10,16 @@ export default function Drafts() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        // Filter RFQs that are in draft status
-        const draftStatuses = ['purchases draft'];
-        const filteredDrafts = rfqsData.rfqs
-            .filter(rfq => draftStatuses.includes(rfq.status.toLowerCase()))
-            .map(rfq => ({
+        getPurchasesDrafts().then(rfqs => {
+            setDrafts(rfqs.map(rfq => ({
                 id: rfq.id,
                 title: rfq.title,
                 category: rfq.category,
                 progress: rfq.stage1?.data?.completionPercentage || 0,
                 last_modified: rfq.lastModified
-            }));
-        setDrafts(filteredDrafts);
-        setLoading(false);
+            })));
+            setLoading(false);
+        });
     }, []);
 
     const columns = [

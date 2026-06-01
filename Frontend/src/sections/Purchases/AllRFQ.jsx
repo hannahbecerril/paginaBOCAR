@@ -2,7 +2,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import TableComponent from '../../components/layout/TableComponent';
-import rfqsData from '../rfqs-data.json';
+import { getPurchasesAllRFQs } from '../api';
 
 export default function AllRFQ() {
     const navigate = useNavigate();
@@ -10,11 +10,8 @@ export default function AllRFQ() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        // Filter to all productive RFQs (excluding drafts)
-        const draftStatuses = ['industrialization draft', 'purchases draft', 'sent to purchases'];
-        const filteredRfqs = rfqsData.rfqs
-            .filter(rfq => !draftStatuses.includes(rfq.status.toLowerCase()))
-            .map(rfq => ({
+        getPurchasesAllRFQs().then(rfqs => {
+            setRfqList(rfqs.map(rfq => ({
                 id: rfq.id,
                 title: rfq.title,
                 category: rfq.category,
@@ -22,9 +19,9 @@ export default function AllRFQ() {
                 status: rfq.status,
                 offers: rfq.stage3?.data?.responses?.length || 0,
                 last_modified: rfq.lastModified
-            }));
-        setRfqList(filteredRfqs);
-        setLoading(false);
+            })));
+            setLoading(false);
+        });
     }, []);
 
     const columns = [

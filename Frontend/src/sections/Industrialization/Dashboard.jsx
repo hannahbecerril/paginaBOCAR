@@ -3,98 +3,19 @@ import { useState, useEffect } from 'react';
 import { Clock, FileText, CheckCircle, XCircle, TrendingUp, TrendingDown, Calendar, RefreshCw, BarChart3, Activity } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
+import { getDashboardData } from '../api';
 
 export default function IndustrializationDashboard() {
     const [timeRange, setTimeRange] = useState('week');
     const [chartData, setChartData] = useState(null);
     const [loading, setLoading] = useState(true);
 
-    // Mock data for Graph 1: Time between status changes
-    const statusChangeData = {
-        week: {
-            labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-            draftToSent: [2.5, 3.2, 2.8, 4.1, 3.5, 2.9, 3.0],
-            createdToDraft: [1.2, 1.5, 1.3, 1.8, 1.4, 1.1, 1.3],
-            stats: {
-                avgDraftToSent: 3.2,
-                avgCreatedToDraft: 1.4,
-                fastestDraftToSent: 2.5,
-                slowestDraftToSent: 4.1
-            }
-        },
-        month: {
-            labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
-            draftToSent: [3.1, 3.4, 2.9, 3.2],
-            createdToDraft: [1.3, 1.4, 1.2, 1.5],
-            stats: {
-                avgDraftToSent: 3.2,
-                avgCreatedToDraft: 1.4,
-                fastestDraftToSent: 2.9,
-                slowestDraftToSent: 3.4
-            }
-        },
-        quarter: {
-            labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
-            draftToSent: [3.5, 3.2, 3.8, 3.1, 3.4, 3.0],
-            createdToDraft: [1.5, 1.3, 1.6, 1.4, 1.3, 1.2],
-            stats: {
-                avgDraftToSent: 3.3,
-                avgCreatedToDraft: 1.4,
-                fastestDraftToSent: 3.0,
-                slowestDraftToSent: 3.8
-            }
-        }
-    };
-
-    // Mock data for Graph 2: RFQ Status Distribution over time
-    const rfqDistributionData = {
-        week: {
-            labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-            drafts: [3, 2, 4, 3, 2, 1, 2],
-            accepted: [1, 2, 1, 2, 1, 1, 1],
-            declined: [0, 1, 0, 1, 0, 0, 1],
-            stats: {
-                totalDrafts: 17,
-                totalAccepted: 9,
-                totalDeclined: 3,
-                acceptanceRate: 34.6
-            }
-        },
-        month: {
-            labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
-            drafts: [12, 10, 8, 6],
-            accepted: [4, 5, 6, 7],
-            declined: [2, 2, 1, 1],
-            stats: {
-                totalDrafts: 36,
-                totalAccepted: 22,
-                totalDeclined: 6,
-                acceptanceRate: 37.9
-            }
-        },
-        quarter: {
-            labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
-            drafts: [15, 12, 10, 8, 6, 4],
-            accepted: [5, 6, 7, 8, 9, 10],
-            declined: [3, 2, 2, 1, 1, 1],
-            stats: {
-                totalDrafts: 55,
-                totalAccepted: 45,
-                totalDeclined: 10,
-                acceptanceRate: 40.9
-            }
-        }
-    };
-
     useEffect(() => {
         setLoading(true);
-        setTimeout(() => {
-            setChartData({
-                statusChange: statusChangeData[timeRange],
-                rfqDistribution: rfqDistributionData[timeRange]
-            });
+        getDashboardData(timeRange).then(data => {
+            setChartData(data);
             setLoading(false);
-        }, 500);
+        });
     }, [timeRange]);
 
     const getMaxValue = (data) => {

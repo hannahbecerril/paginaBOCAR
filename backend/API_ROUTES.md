@@ -416,6 +416,8 @@ Retrieve a side-by-side comparison of all supplier quotes for an RFQ in lev7.
 **Permissions:** `Purchases`, `Purchases_Admin`
 
 > **Note:** Missing `/api/` prefix — lives at `/rfq/<pk>/comparativa/`.
+>
+> **Warning (mold P2–P5 broken):** The view filters each mold part by `Elaborated_by=username`. Since migration `0007` removed `Elaborated_by` from `MOLD_COSTBR_P2_S`–`P5_S`, accessing this endpoint for a mold RFQ raises `FieldError` → 500. Die comparatives (`DIE_COSTBR_P1_S`–`P4_S`) are unaffected. See `ARCHITECTURAL_RISKS.md §3.6`.
 
 **Response 200:**
 ```json
@@ -426,8 +428,8 @@ Retrieve a side-by-side comparison of all supplier quotes for an RFQ in lev7.
     {
       "proveedor": "John Brennan",
       "datos": {
-        "parte_1": { "cavity_machining_usd": 12500.0, ... },
-        "parte_2": { ... }
+        "parte_1": { "Company": "SupplierCo", ... },
+        "parte_2": null
       }
     }
   ]
@@ -467,15 +469,17 @@ Final manager decision: approve or reject the selected winner.
 
 **State transitions:**
 - `"aprobar"` → `lev8=False, lev9=True` (awarded, all data frozen)
-- `"rechazar"` → `lev8=False, lev7=True` + clears `winning_supplier` (forces re-evaluation)
+- `"rechazar"` → `lev8=False, lev7=True` (forces re-evaluation — winner flag should be cleared)
 
-**Response 200:**
+> **Warning:** This endpoint has three bugs. With multiple assigned suppliers it raises `MultipleObjectsReturned` → 500. The "aprobar" path crashes with `AttributeError` because it references the non-existent `winning_supplier` field (removed in migration `0007`). The "rechazar" path does not clear the winner flag in the DB. See `ARCHITECTURAL_RISKS.md §3.2`.
+
+**Response 200 (intended — currently crashes on "aprobar"):**
 ```json
 {
   "mensaje": "Fallo aprobado exitosamente. El Molde ha sido adjudicado y la licitación está cerrada (Nivel 9).",
   "id_rfq": 7,
   "tipo": "mold",
-  "proveedor_ganador": "supplier_brennan"
+  "proveedor_ganador": null
 }
 ```
 
@@ -497,23 +501,25 @@ Submit a cost breakdown quote for an RFQ in lev6. Supports draft saves.
 
 **Permissions:** `Supplier`
 
-**Request — Mold:**
+> **Warning (mold P2–P5 broken):** Migration `0007` removed the `Elaborated_by` field from `MOLD_COSTBR_P2_S` through `P5_S`, but the view still uses it as a lookup key in `update_or_create`. Submitting any data in `mold_cost_p2` through `mold_cost_p5` raises `FieldError` → 500. Only `mold_cost_p1` and all `die_cost_*` parts work correctly. See `ARCHITECTURAL_RISKS.md §3.6`.
+
+**Request — Mold (only `mold_cost_p1` is currently functional):**
 ```json
 {
   "is_draft": false,
-  "mold_cost_p1": { "cavity_machining_usd": 12500.00, "core_machining_usd": 11000.00 },
-  "mold_cost_p2": { "hot_runner_system_usd": 8500.00, "accessories_components_usd": 2400.00 },
-  "mold_cost_p3": { "tryout_costs_usd": 3500.00, "engraving_texturing_usd": 1500.00 },
+  "mold_cost_p1": { "Company": "SupplierCo", "Country": "MX", "Base_currency": "USD" },
+  "mold_cost_p2": {},
+  "mold_cost_p3": {},
   "mold_cost_p4": {},
   "mold_cost_p5": {}
 }
 ```
 
-**Request — Die:**
+**Request — Die (all parts functional):**
 ```json
 {
   "is_draft": false,
-  "die_cost_p1": {},
+  "die_cost_p1": { "Elaborated_by": "supplier_user", "Country": "MX" },
   "die_cost_p2": {},
   "die_cost_p3": {},
   "die_cost_p4": {}
@@ -600,12 +606,24 @@ Monthly workload histogram and win-rate metrics for the authenticated supplier.
 
 ---
 
+## 9. Audit Log (Bitacora)
+
+Every request to a path under `/api/` is automatically logged by `RegistroBitacoraMiddleware` to the `Bitacora` table. Fields recorded: `usuario` (FK to User, nullable), `ruta`, `metodo`, `direccion_ip`, `fecha_hora`, `payload` (currently always null).
+
+> **Note:** There is no API endpoint to read audit log records. The table is write-only from the frontend's perspective. To inspect logs, query `Bitacora` directly in the database or Django admin.
+
+---
+
 ## Known Issues / Inconsistencies
 
 | Route | Issue |
 |-------|-------|
-| `/rfq/crear/` | Missing `/api/` prefix (inconsistent with other routes) |
-| `/rfqs/pendientes-compras/` | Missing `/api/` prefix + `RFQAprobadosListView` is imported in `urls.py` but **not defined** in `views.py` — causes `ImportError` on server startup |
+| `/rfqs/pendientes-compras/` | Missing `/api/` prefix + `RFQAprobadosListView` not defined in `views.py` → `ImportError` on server startup |
+| `/rfq/crear/` | Missing `/api/` prefix |
 | `/usuarios/proveedores/` | Missing `/api/` prefix |
 | `/rfq/<pk>/asignar-proveedores/` | Missing `/api/` prefix |
 | `/rfq/<pk>/comparativa/` | Missing `/api/` prefix |
+| `POST /api/rfq/<pk>/cotizar/` | Mold parts P2–P5 crash with `FieldError` — `Elaborated_by` removed from those models in migration 0007 |
+| `GET /rfq/<pk>/comparativa/` | Mold parts P2–P5 crash with `FieldError` — same migration desync |
+| `PATCH /api/rfq/<pk>/fallo-gerencial/` | Crashes on "aprobar" (`AttributeError`: `winning_supplier`); "rechazar" does not clear winner flag in DB |
+| `PUT /rfq/<pk>/asignar-proveedores/` | IDs sent by the frontend are Django `User` IDs; view looks up in `Suppliers` table — different ID spaces |

@@ -137,9 +137,11 @@ The secret key is `PROVEEDOR_SECRET_KEY` in `backend/core/settings.py`.
 - **`RFQAprobadosListView` missing**: imported in `core/urls.py` line 7 but not defined in `api/views.py`. The server will fail to start unless this is fixed. The functional replacement is `RFQClasificadoListView` at `GET /api/rfqs/lista/`.
 - **Inconsistent URL prefixes**: several routes are missing the `/api/` prefix — see `backend/API_ROUTES.md` for the full list.
 - **`db.sqlite3` is committed**: should be in `.gitignore`.
-- **`FalloFinalGerencialView` AttributeError**: `views.py:248,266` reference `asignacion.winning_supplier` which is not a model field (the field is `is_winner`). The "aprobar" path crashes with `AttributeError`; the "rechazar" path silently fails to clear the winner flag in the DB.
+- **`FalloFinalGerencialView` AttributeError**: `views.py:248,266` reference `asignacion.winning_supplier` — this field was removed in migration 0007 (replaced by `is_winner`). The "aprobar" path crashes; the "rechazar" path silently does nothing. See `ARCHITECTURAL_RISKS.md §3.2`.
 - **`ReviewRFQIndView` missing tracking**: `views.py:978` never calls `registrar_tracking_rfq`, so lev2/lev4 transitions are never recorded in `RFQ_Tracking`. The Industrialization dashboard KPI (`lead_time_tecnico_dias`) always returns 0.
-- **Supplier identity mismatch**: `ProveedorListView` returns Django `User` IDs, but `AssignSuppliersRFQView` and `BuzonProveedorListView` look up by `Suppliers` table IDs — two unrelated tables. Supplier assignment and the supplier inbox are effectively broken. See `backend/ARCHITECTURAL_RISKS.md` §3.5.
+- **Supplier identity mismatch**: `ProveedorListView` returns Django `User` IDs, but `AssignSuppliersRFQView` and `BuzonProveedorListView` look up by `Suppliers` table IDs — two unrelated tables. Supplier assignment and the supplier inbox are effectively broken. See `ARCHITECTURAL_RISKS.md §3.5`.
+- **Mold quote P2–P5 broken (migration desync)**: Migration 0007 removed `Elaborated_by` from `MOLD_COSTBR_P2_S`–`P5_S`, but `CotizacionProveedorView` and `ComparativaCotizacionesView` still use it for ORM lookups → `FieldError` → 500. Only mold part 1 and all die parts work. See `ARCHITECTURAL_RISKS.md §3.6`.
+- **`PROVEEDOR_SECRET_KEY = 'clave_secreta'`**: trivially guessable secret committed in plain text in `settings.py` — the HMAC supplier auth can be forged by anyone with repo access. See `ARCHITECTURAL_RISKS.md §7.1`.
 
 ---
 
