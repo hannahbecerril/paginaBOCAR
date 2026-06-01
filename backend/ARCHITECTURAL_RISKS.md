@@ -20,56 +20,196 @@ Several routes in `core/urls.py` are missing the `/api/` prefix, making them unr
 
 ---
 
-## 2. State Machine Redesign — Logical Risks
+## 2. State Machine — Current Implementation, Required Change, and Migration Plan
 
-This section documents the risks and open decisions involved in moving from the current `lev1`–`lev9` boolean scheme to named statuses with clearer business semantics.
+### 2.0 Current state (not yet changed)
 
-### 2.1 The proposed naming drops two real intermediate states
+The backend **still uses the original `lev1`–`lev9` boolean scheme**. `Status_RFQ` (`base.py:21`) has nine separate `BooleanField`s, and every view performs direct flag assignments (`status_rfq.lev4 = True`, `status_rfq.lev6 = False`, etc.). Migration `0007` even added `lev9` as a new boolean field in May 2026, confirming the scheme is still being actively extended rather than replaced.
 
-The proposed new statuses are:
+**This must change.** The boolean approach has structural problems that compound as the codebase grows:
 
+- **No single source of truth for current state.** Nothing in the database prevents two flags from being `True` simultaneously — the "only one active" invariant is enforced only in Python. A bug or failed transaction leaves an RFQ in an undefined multi-flag state with no way to detect it.
+- **Unreadable DB rows.** A row with `lev1=T, lev4=T` requires reading the code to understand its meaning. A row with `status='purchases_draft'` is self-explanatory.
+- **Expensive queries.** Filtering by current state requires `Q(lev4=True) | Q(lev6=True) | Q(lev7=True)` chains. A single indexed `status` column is faster and simpler.
+- **Migration overhead for every new state.** Each additional state requires a new column, a new migration, and updates to every view and query that checks state.
+
+---
+
+### 2.1 Desired target: 7 named RFQ-level statuses
+
+The desired model replaces all boolean flags with a single `status` CharField on `RFQ_Base`. The lifecycle follows a "draft stays as draft" rule:
+
+> **An RFQ remains in its current draft status until an admin explicitly sends it forward. There is no separate "pending approval" intermediate status. The admin's action IS the transition — they either send it (advancing the status) or reject it (returning it to draft).**
+
+This eliminates `lev3` and `lev5` as standalone database states. The admin approval event is the trigger for the transition, not a state that the RFQ sits in.
+
+#### RFQ-level statuses (stored in `RFQ_Base.status`)
+
+| Status value | Who acts | Description |
+|---|---|---|
+| `industrialization_draft` | Ind. engineer + Ind_Admin | RFQ is being created or is awaiting admin review. Stays here until `Industrialization_Admin` sends it forward. Covers lev1 + lev2 (working) and the former lev3 (waiting for admin). |
+| `sent_to_purchases` | Purchases team | `Industrialization_Admin` confirmed and sent the RFQ. Appears in the Purchases inbox. Replaces former lev4 entry point. |
+| `purchases_draft` | Purchases team | Purchases is actively assigning suppliers. Stays here until `Purchases_Admin` sends it forward. Covers former lev4 (working) and former lev5 (waiting for admin). |
+| `sent_to_suppliers` | Supplier portal | `Purchases_Admin` confirmed the supplier list and published the RFQ. Suppliers can see and respond to it. Replaces former lev6. |
+| `waiting_for_suppliers` | Purchases analysis | At least one supplier submitted a quote. Purchases can begin analysis. **Suppliers who have not yet responded must still be able to submit while in this status** — the old lev6-only guard in `CotizacionProveedorView` must be widened. Replaces former lev7. |
+| `supplier_selected` | Purchases_Admin decision | Purchases selected a winning supplier, pending final manager confirmation. Replaces former lev8. |
+| `rfq_closed` | Read-only | Final award confirmed. All data frozen. Replaces former lev9. |
+
+#### Per-supplier display indicators (derived — NOT stored in `RFQ_Base.status`)
+
+These are display labels visible only to the supplier in their own portal. They are computed from `RFQ_Assignment` fields, not from `RFQ_Base.status`:
+
+| Display label | Derived from | Condition |
+|---|---|---|
+| `supplier_draft` | `RFQ_Base.status == 'sent_to_suppliers'` AND `RFQ_Assignment.has_responded == False` | Supplier received the RFQ but has not submitted a quote yet |
+| `supplier_response` | `RFQ_Assignment.has_responded == True` | Supplier has submitted their quote. Visible only to that supplier. |
+| `selected` | `RFQ_Base.status == 'supplier_selected'` AND `RFQ_Assignment.is_winner == True` | Shown to the winning supplier |
+| `not_selected` | `RFQ_Base.status == 'supplier_selected'` AND `RFQ_Assignment.is_winner == False` | Shown to non-winning suppliers |
+
+`has_responded` is a **new `BooleanField`** that must be added to `RFQ_Assignment`. It is set to `True` when a supplier makes a non-draft submission in `CotizacionProveedorView`. `is_winner` already exists.
+
+---
+
+### 2.2 Mapping from current booleans to desired statuses
+
+| Current (`Status_RFQ`) | Maps to (`RFQ_Base.status`) | Notes |
+|---|---|---|
+| `lev1=True` | `industrialization_draft` | Merged with lev2 |
+| `lev2=True` | `industrialization_draft` | No behaviour change |
+| `lev3=True` | `industrialization_draft` | **Eliminated.** Admin sends from draft directly. |
+| `lev4=True` (just received) | `sent_to_purchases` | New explicit Purchases inbox status |
+| `lev4=True` (Purchases working) | `purchases_draft` | Purchases picks it up → transitions automatically |
+| `lev5=True` | `purchases_draft` | **Eliminated.** Admin sends from draft directly. |
+| `lev6=True` | `sent_to_suppliers` | Renamed |
+| `lev7=True` | `waiting_for_suppliers` | Renamed; submission guard must be widened (see Risk I) |
+| `lev8=True` | `supplier_selected` | Renamed |
+| `lev9=True` | `rfq_closed` | Renamed |
+
+**Note on the lev4 split:** The old lev4 served as both a Purchases inbox and a working state. The new design separates it into `sent_to_purchases` (just received) and `purchases_draft` (actively being worked on). The transition between them can happen automatically the first time `AssignSuppliersRFQView` is called — no new endpoint is required.
+
+---
+
+### 2.3 New risks introduced by the desired design
+
+#### Risk F — Admin inbox visibility without a separate "pending approval" status
+
+**The problem:** By eliminating lev3 and lev5, both admins share a status with regular drafts. `Industrialization_Admin` would see every `industrialization_draft` in the system, not just the ones engineers have submitted for review. Without an extra signal there is no way to distinguish "just started" from "ready for your action".
+
+**Solution:** Add `submitted_for_review = BooleanField(default=False)` to `RFQ_Base`. The engineer sets it to `True` when they finish and submit to the admin (maps to the old lev2→lev3 transition). The admin's inbox query becomes `industrialization_draft AND submitted_for_review=True`. When the admin rejects it back to draft, `submitted_for_review` resets to `False`. The same pattern applies to `purchases_draft` — `Purchases_Admin` sees only drafts with `submitted_for_review=True`. The existing `is_draft` flag in `CrearRFQView` / `EditarRFQView` maps directly to this field.
+
+#### Risk G — `sent_to_purchases` and `purchases_draft` need a defined transition trigger
+
+**The problem:** The new design splits old lev4 into two statuses. If there is no explicit action for Purchases to "accept" the RFQ and move it from `sent_to_purchases` to `purchases_draft`, the transition is undefined. Creating a dedicated "accept" endpoint adds unnecessary surface area.
+
+**Solution:** Make the transition automatic: the first time `AssignSuppliersRFQView` is called for a `sent_to_purchases` RFQ, advance it to `purchases_draft` before saving. No new endpoint needed. If even less friction is desired, treat `sent_to_purchases` and `purchases_draft` as the same DB value and use a display hint (e.g. whether any suppliers have been assigned) to distinguish them in the frontend.
+
+#### Risk H — `supplier_response` tracking requires a new field on `RFQ_Assignment`
+
+**The problem:** The per-supplier `supplier_response` display label requires knowing whether a specific supplier has submitted their quote. The current model has no `has_responded` field on `RFQ_Assignment`. The existing approach (tracking by `Elaborated_by` in the cost tables) is already broken (§3.6) and must not be reused.
+
+**Solution:** Add `has_responded = BooleanField(default=False)` to `RFQ_Assignment`. `CotizacionProveedorView` sets it to `True` when `is_draft=False`. This is a single-column migration. The supplier portal derives the `supplier_draft` / `supplier_response` display label from this field, not from the main RFQ status.
+
+#### Risk I — `waiting_for_suppliers` must NOT lock out remaining suppliers
+
+**The problem:** The old lev7 transition (§3.1) locked all other suppliers out the moment the first one submitted, because `CotizacionProveedorView` guards with `if not status_rfq.lev6`. The desired design defines `waiting_for_suppliers` as "at least 1 response received" — implying remaining suppliers can still submit. Without changing the guard, §3.1 persists under the new status names.
+
+**Solution:** Widen the submission guard in `CotizacionProveedorView`:
+```python
+# Old (locks out all suppliers after first submission)
+if not status_rfq.lev6: ...
+
+# Required (allows submissions while waiting for others)
+if rfq.status not in (STATUS.SENT_TO_SUPPLIERS, STATUS.WAITING_FOR_SUPPLIERS): ...
 ```
-Industrialization:  ind_draft  →  sent_to_purchases
-Purchases:          purchases_draft  →  sent_to_suppliers
-Suppliers:          supplier_draft  →  supplier_response
-Complementary:      waiting_for_suppliers  →  supplier_selected  →  rfq_closed
+
+#### Risk J — `selected` / `not_selected` requires frontend role-aware rendering with backend data
+
+**The problem:** The same `supplier_selected` DB status must display as "Selected" to the winning supplier and "Not Selected" to others. `RFQClasificadoListView` currently injects `detalles_tecnicos` but does not include the supplier's own `is_winner` value from `RFQ_Assignment`.
+
+**Solution:** When `RFQClasificadoListView` serves a `Supplier`-role request and the RFQ's status is `supplier_selected`, it must join `RFQ_Assignment` and include `is_winner` for the requesting supplier's assignment in the response payload. The frontend then renders "Selected" or "Not Selected" based on that field, independently of the status string.
+
+---
+
+### 2.4 Migration risks inherited from the boolean-to-named transition
+
+#### Risk K — `RFQ_Tracking.nivel_alcanzado` stores raw `levN` strings
+
+**The problem:** Every existing tracking row contains strings like `'lev4'`, `'lev6'`. The dashboard KPI queries match by exact string:
+```python
+RFQ_Tracking.objects.filter(id_rfq_id=rfq_id, nivel_alcanzado='lev6')   # views.py:120
+RFQ_Tracking.objects.filter(id_rfq_id=rfq_id, nivel_alcanzado__in=['lev2', 'lev3'])  # views.py:171
 ```
+After renaming, all historical KPI calculations silently return zero.
 
-This produces 8 (or 9 counting `created`) visible states, but the current machine has **two admin approval gates** that do not appear in the proposed list:
+**Solution:** Run this data migration immediately after the schema migration, before any view code is updated:
+```python
+LEVEL_MAP = {
+    'lev1': 'industrialization_draft',
+    'lev2': 'industrialization_draft',
+    'lev3': 'industrialization_draft',
+    'lev4': 'sent_to_purchases',
+    'lev5': 'purchases_draft',
+    'lev6': 'sent_to_suppliers',
+    'lev7': 'waiting_for_suppliers',
+    'lev8': 'supplier_selected',
+    'lev9': 'rfq_closed',
+}
+for old, new in LEVEL_MAP.items():
+    RFQ_Tracking.objects.filter(nivel_alcanzado=old).update(nivel_alcanzado=new)
+```
+After the migration add `choices=STATUS_CHOICES` to `nivel_alcanzado` so future invalid writes fail loudly.
 
-- **lev3** — the Ind engineer submits; the `Industrialization_Admin` must approve before it moves to Purchases.
-- **lev5** — the Purchases user selects a supplier list; the `Purchases_Admin` must approve before it publishes to suppliers.
+#### Risk L — `Status_RFQ` table becomes orphaned data
 
-If those gates are collapsed into adjacent states, both admin roles lose their visible "inbox" — they would be approving something that looks indistinguishable from a regular draft. The approval action would still exist in the code, but the status would give no signal that the admin's attention is required.
+**The problem:** `Status_RFQ` has no ForeignKey to `RFQ_Base` (see §4.1). After migrating state into `RFQ_Base.status`, its rows are stale but still present, creating ambiguity about which field is authoritative.
 
-### 2.2 Recommendation: preserve both gates, name them explicitly
+**Solution:** (1) Add `status` (nullable `CharField`) to `RFQ_Base`. (2) Run the data migration from `Status_RFQ`. (3) Rewrite all views. (4) Drop `Status_RFQ` in a follow-up migration after deployment is verified. Never drop it before step 3 is live.
 
-A consistent 9-state naming (keeping the approval gates visible) would be:
+#### Risk M — ~15 view call sites check boolean flags directly
 
-| Level | Proposed name | Responsible |
-|-------|--------------|-------------|
-| lev1 | `created` | Auto on creation |
-| lev2 | `ind_draft` | Industrialization engineer |
-| lev3 | `pending_ind_approval` | Industrialization_Admin |
-| lev4 | `purchases_draft` | Purchases user |
-| lev5 | `pending_purchases_approval` | Purchases_Admin |
-| lev6 | `published_to_suppliers` | Suppliers (their "draft") |
-| lev7 | `quotes_received` | Purchases user (analysis) |
-| lev8 | `supplier_selected` | Purchases_Admin (final decision) |
-| lev9 | `rfq_closed` | Read-only |
+**The problem:** Every view in `views.py` has inline boolean checks scattered across ~15 locations. A partial update creates split-brain: one request reads `rfq.status`, another reads `status_rfq.lev6`, and they disagree.
 
-### 2.3 Symmetry argument for the Purchases gate
+**Solution:** Rewrite all 15 call sites in a single PR. Use a `STATUS` constants class to prevent silent typos:
+```python
+class STATUS:
+    IND_DRAFT             = 'industrialization_draft'
+    SENT_TO_PURCHASES     = 'sent_to_purchases'
+    PURCHASES_DRAFT       = 'purchases_draft'
+    SENT_TO_SUPPLIERS     = 'sent_to_suppliers'
+    WAITING_FOR_SUPPLIERS = 'waiting_for_suppliers'
+    SUPPLIER_SELECTED     = 'supplier_selected'
+    RFQ_CLOSED            = 'rfq_closed'
+```
+A typo in `STATUS.SENT_TO_PURCHASESS` raises `AttributeError` immediately. A typo in the string `'sent_to_purchasess'` is silently accepted.
 
-The original question was whether a `pending_ind_approval` equivalent should also apply to the Purchases workflow. The answer is yes, for the same structural reason:
+#### Risk N — `registrar_tracking_rfq` call sites embed `levN` literals
 
-- In the **Ind workflow**: a regular engineer (`Industrialization`) creates and edits; a manager (`Industrialization_Admin`) reviews and approves before it leaves the department.
-- In the **Purchases workflow**: a regular buyer (`Purchases`) selects suppliers; a manager (`Purchases_Admin`) reviews and approves before it is published externally.
+**The problem:** ~8 calls in `views.py` pass raw `levN` strings. Missing any one after the migration writes stale strings into `RFQ_Tracking`, breaking KPI calculations again.
 
-Both gates are protecting a **department boundary** (Ind→Purchases and Purchases→Supplier). Removing one but not the other would create an asymmetric trust model where one department's manager has a visible approval step and the other's does not. If lev3 is kept as `pending_ind_approval`, lev5 should be kept as `pending_purchases_approval` for the same reason.
+**Solution:** Replace all literals with `STATUS.*` constants (Risk M). The `choices` constraint on `nivel_alcanzado` (Risk K) catches any remaining raw string at save time.
 
-### 2.4 `RFQ_Tracking` historical data risk
+#### Risk O — `Elaborated_by` desync and identity split interact with this refactor
 
-`RFQ_Tracking.nivel_alcanzado` stores the level string (e.g. `'lev6'`) as a plain `CharField` with no validation. The dashboard KPI calculations in `views.py:120` and `views.py:171` query this field by exact string match to compute timing between transitions. If the level strings are ever renamed as part of this redesign, existing rows in the database will retain the old strings, and all historical time calculations will silently return zero or incorrect values. Any renaming must include a data migration on this table.
+**The problem:** §3.5 and §3.6 bugs touch the same views being rewritten for the state machine. Combining all three in one PR produces a diff too large to review safely.
+
+**Solution:** Fix §3.5 and §3.6 in separate, independently verifiable PRs before starting the state machine refactor.
+
+---
+
+### 2.5 Recommended execution order
+
+| Step | Action | Risks addressed |
+|------|--------|-----------------|
+| 1 | Fix §3.5 — unify supplier identity to Django `User`, remove `Suppliers` table dependency from views | O |
+| 2 | Fix §3.6 — replace `Elaborated_by` lookups with `RFQ_Assignment` FK filter | O |
+| 3 | Fix §3.2, §3.3 — `FalloFinalGerencialView` crashes + `ReviewRFQIndView` missing tracking | Unblocks correct KPI data accumulation |
+| 4 | Add `RFQ_Base.status` (nullable) + `RFQ_Assignment.has_responded` + `RFQ_Base.submitted_for_review` | F, H |
+| 5 | Data migration: populate `RFQ_Base.status` from `Status_RFQ` booleans using `LEVEL_MAP` | L |
+| 6 | Data migration: rename `RFQ_Tracking.nivel_alcanzado` from `levN` → new strings | K |
+| 7 | Rewrite all ~15 view call sites + all ~8 `registrar_tracking_rfq` calls + widen supplier submission guard in one PR | M, N, I |
+| 8 | Make `RFQ_Base.status` non-nullable; add `choices` constraint to `nivel_alcanzado` | K, M |
+| 9 | Update `RFQClasificadoListView` to inject `is_winner` for supplier-role requests | J |
+| 10 | Drop `Status_RFQ` table | L |
 
 ---
 
