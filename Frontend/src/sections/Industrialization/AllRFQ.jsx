@@ -14,7 +14,7 @@ export default function AllRFQ() {
             setRfqList(rfqs.map(rfq => ({
                 id: rfq.id,
                 title: rfq.title,
-                category: rfq.category,
+                category: rfq.type,
                 priority: rfq.priority,
                 status: rfq.status,
                 offers: rfq.stage3?.data?.responses?.length || 0,

@@ -85,27 +85,23 @@ Django Groups are used as roles. Custom permission classes live in `backend/api/
 
 ---
 
-## RFQ State Machine (9 Levels)
+## RFQ State Machine
 
-Each RFQ has a corresponding `Status_RFQ` record with boolean fields `lev1`–`lev9`. Only one level should be `True` at a time (except `lev1` which stays `True`).
+Each RFQ has a `status` CharField on `RFQ_Base` (migration 0008 replaced the old `lev1`–`lev9` boolean flags). The `submitted_for_review` flag distinguishes "in progress" from "pending admin action" within `industrialization_draft` and `purchases_draft`.
 
-```
-lev1 → lev2 (draft) → lev3 (pending Ind. approval)
-     ↗                ↓
-                   lev4 (Purchases inbox)
-                      ↓
-                   lev5 (waiting Purchases_Admin approval)
-                      ↓
-                   lev6 (published to suppliers)
-                      ↓
-                   lev7 (quote analysis)
-                      ↓
-                   lev8 (pending final award)
-                      ↓
-                   lev9 (awarded / closed)
-```
+| Status | Who acts | Description |
+|--------|---------|-------------|
+| `industrialization_draft` | Ind. engineer + Ind_Admin | Working draft; `submitted_for_review=True` = in Ind_Admin inbox |
+| `sent_to_purchases` | Purchases team | Ind_Admin approved — appears in Purchases inbox |
+| `purchases_draft` | Purchases team | Assigning suppliers; `submitted_for_review=True` = in Purchases_Admin inbox |
+| `sent_to_suppliers` | Supplier portal | Published to suppliers, no responses yet |
+| `waiting_for_suppliers` | Purchases analysis | At least one supplier responded; others can still submit |
+| `supplier_selected` | Purchases_Admin | Winner chosen, pending final award |
+| `rfq_closed` | Read-only | Final award confirmed, frozen |
 
-State transitions are tracked in `RFQ_Tracking` (timestamps per level per RFQ) — used by the dashboard KPI calculations.
+Use the `STATUS` constants from `backend/api/constants.py` (backend) or `frontend/src/constants/rfqStatus.js` (frontend) — never raw strings.
+
+State transitions are tracked in `RFQ_Tracking` (timestamps per status per RFQ) — used by the dashboard KPI calculations.
 
 ---
 
@@ -134,14 +130,16 @@ The secret key is `PROVEEDOR_SECRET_KEY` in `backend/core/settings.py`.
 
 ## Known Issues
 
-- **`RFQAprobadosListView` missing**: imported in `core/urls.py` line 7 but not defined in `api/views.py`. The server will fail to start unless this is fixed. The functional replacement is `RFQClasificadoListView` at `GET /api/rfqs/lista/`.
-- **Inconsistent URL prefixes**: several routes are missing the `/api/` prefix — see `backend/API_ROUTES.md` for the full list.
-- **`db.sqlite3` is committed**: should be in `.gitignore`.
-- **`FalloFinalGerencialView` AttributeError**: `views.py:248,266` reference `asignacion.winning_supplier` — this field was removed in migration 0007 (replaced by `is_winner`). The "aprobar" path crashes; the "rechazar" path silently does nothing. See `ARCHITECTURAL_RISKS.md §3.2`.
-- **`ReviewRFQIndView` missing tracking**: `views.py:978` never calls `registrar_tracking_rfq`, so lev2/lev4 transitions are never recorded in `RFQ_Tracking`. The Industrialization dashboard KPI (`lead_time_tecnico_dias`) always returns 0.
-- **Supplier identity mismatch**: `ProveedorListView` returns Django `User` IDs, but `AssignSuppliersRFQView` and `BuzonProveedorListView` look up by `Suppliers` table IDs — two unrelated tables. Supplier assignment and the supplier inbox are effectively broken. See `ARCHITECTURAL_RISKS.md §3.5`.
-- **Mold quote P2–P5 broken (migration desync)**: Migration 0007 removed `Elaborated_by` from `MOLD_COSTBR_P2_S`–`P5_S`, but `CotizacionProveedorView` and `ComparativaCotizacionesView` still use it for ORM lookups → `FieldError` → 500. Only mold part 1 and all die parts work. See `ARCHITECTURAL_RISKS.md §3.6`.
-- **`PROVEEDOR_SECRET_KEY = 'clave_secreta'`**: trivially guessable secret committed in plain text in `settings.py` — the HMAC supplier auth can be forged by anyone with repo access. See `ARCHITECTURAL_RISKS.md §7.1`.
+All critical bugs from the original codebase have been resolved (migrations 0008–0012). See `backend/ARCHITECTURAL_RISKS.md` for the full resolution history.
+
+Remaining open items (as of 2026-06-02):
+
+- **No test coverage**: `api/tests.py` is empty. See `ARCHITECTURAL_RISKS.md §10`.
+- **`completionPercentage` always 0 in RFQ detail page**: `normalizeRFQDetail` in `api.js` hardcodes 0. `RFQDetailView` does not include `completion_percentage` in its response. Fix: inject it in `RFQDetailView.get()` or call `getRFQProgress(id)` client-side. See `frontend/API_RISKS.md §14-A`.
+- **Notifications never emitted**: No state transition view creates `Notificacion` records — the notification inbox is always empty. See `frontend/API_RISKS.md §14-E`.
+- **`PROVEEDOR_SECRET_KEY` defaults to `'clave_secreta'`**: The dev default is still a trivially guessable string. Set `PROVEEDOR_SECRET_KEY` via environment variable in any non-local deployment. See `backend/ARCHITECTURAL_RISKS.md §7`.
+- **Supplier PATCH/DELETE requires only `IsPurchasesUser`**: Any Purchases user can delete a supplier. Recommend raising to `IsPurchasesAdmin`. See `frontend/API_RISKS.md §14-H`.
+- **`EditarRFQView` missing backend guard for `sent_to_purchases`**: `submitRFQForReview` could accidentally re-draft an RFQ already in Purchases. ActionBar guards this client-side; the backend only blocks at `sent_to_suppliers` and beyond. See `frontend/API_RISKS.md §14-G`.
 
 ---
 

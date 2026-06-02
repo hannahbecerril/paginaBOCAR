@@ -14,7 +14,7 @@ export default function Drafts() {
             setDrafts(rfqs.map(rfq => ({
                 id: rfq.id,
                 title: rfq.title,
-                category: rfq.category,
+                category: rfq.type,
                 progress: rfq.stage1?.data?.completionPercentage || 0,
                 last_modified: rfq.lastModified
             })));

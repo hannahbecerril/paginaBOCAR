@@ -29,18 +29,23 @@ export default function Login({ onLogin }) {
     setLoading(true);
 
     try {
-      let url = 'http://127.0.0.1:8000/api/auth/login/interno/';
+      const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
       let headers = { 'Content-Type': 'application/json' };
-
-      // Crear payload ordenado alfabéticamente
-      const payloadObj = getSortedObject({ password, username });
-      const bodyString = JSON.stringify(payloadObj);
+      let url;
+      let bodyString;
 
       if (userType === 'supplier') {
-        url = 'http://127.0.0.1:8000/api/auth/login/proveedor/';
-        const secretKey = 'clave_secreta'; // La clave secreta compartida con el backend
+        // Supplier: keys must be sorted alphabetically for HMAC validation
+        const payloadObj = getSortedObject({ password, username });
+        bodyString = JSON.stringify(payloadObj);
+        const secretKey = import.meta.env.VITE_PROVEEDOR_HMAC_KEY ?? 'clave_secreta';
         const hash = CryptoJS.HmacSHA256(bodyString, secretKey).toString(CryptoJS.enc.Hex);
         headers['X-Signature'] = hash;
+        url = `${BASE_URL}/api/auth/login/proveedor/`;
+      } else {
+        // Internal staff: no signature needed, no key sorting required
+        bodyString = JSON.stringify({ username, password });
+        url = `${BASE_URL}/api/auth/login/interno/`;
       }
 
       const response = await fetch(url, {
@@ -63,16 +68,8 @@ export default function Login({ onLogin }) {
         Cookies.set('refresh_token', data.refresh, { expires: 7, sameSite: 'strict' });
       }
 
-      // Detectar el rol correctamente
-      let rolDetectado = 'Industrialization'; // Default
-
-      if (data?.usuario?.grupos && data.usuario.grupos.length > 0) {
-        rolDetectado = data.usuario.grupos[0];
-      } else if (data?.usuario?.groups && data.usuario.groups.length > 0) {
-        rolDetectado = data.usuario.groups[0];
-      } else if (data?.usuario?.rol) {
-        rolDetectado = data.usuario.rol;
-      }
+      // Detect role from backend response — backend always uses `grupos` (never `groups`)
+      const rolDetectado = data?.usuario?.grupos?.[0] ?? 'Industrialization';
 
       // Normalizar el rol (eliminar _Admin si existe para las rutas)
       let rolParaRuta = rolDetectado;

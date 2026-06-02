@@ -99,6 +99,7 @@ class MOLD_COSTBR_P1_S(models.Model):
 class MOLD_COSTBR_P2_S(models.Model):
     id_rfq = models.ForeignKey(RFQ_Base, on_delete=models.CASCADE, related_name='mold_costbr_p2_s_rfq')
     supplier = models.ForeignKey(Suppliers, on_delete=models.PROTECT, related_name='mold_costbr_p2_s_supplier', null=True, blank=True)
+    Elaborated_by = models.CharField(max_length=255, blank=True)
 
     # Die Frame
     DieFrame_Unit = models.FloatField(null=True, blank=True)
@@ -190,6 +191,7 @@ class MOLD_COSTBR_P2_S(models.Model):
 class MOLD_COSTBR_P3_S(models.Model):
     id_rfq = models.ForeignKey(RFQ_Base, on_delete=models.CASCADE, related_name='mold_costbr_p3_s_rfq')
     supplier = models.ForeignKey(Suppliers, on_delete=models.PROTECT, related_name='mold_costbr_p3_s_supplier', null=True, blank=True)
+    Elaborated_by = models.CharField(max_length=255, blank=True)
 
     # Assembly
     Assembly_h = models.FloatField(null=True, blank=True)
@@ -304,6 +306,7 @@ class MOLD_COSTBR_P3_S(models.Model):
 class MOLD_COSTBR_P4_S(models.Model):
     id_rfq = models.ForeignKey(RFQ_Base, on_delete=models.CASCADE, related_name='mold_costbr_p4_s_rfq')
     supplier = models.ForeignKey(Suppliers, on_delete=models.PROTECT, related_name='mold_costbr_p4_s_supplier', null=True, blank=True)
+    Elaborated_by = models.CharField(max_length=255, blank=True)
 
     # Measure Mold
     MeasureMold_h = models.FloatField(null=True, blank=True)
@@ -384,6 +387,8 @@ class MOLD_COSTBR_P4_S(models.Model):
 class MOLD_COSTBR_P5_S(models.Model):
     id_rfq = models.ForeignKey(RFQ_Base, on_delete=models.CASCADE, related_name='mold_costbr_p5_s_rfq')
     supplier = models.ForeignKey(Suppliers, on_delete=models.PROTECT, related_name='mold_costbr_p5_s_supplier', null=True, blank=True)
+    Elaborated_by = models.CharField(max_length=255, blank=True)
+
     #Die improvements
     DieImprovements_Unit = models.FloatField(null=True, blank=True)
     DieImprovements_PriceUnit = models.FloatField(null=True, blank=True)

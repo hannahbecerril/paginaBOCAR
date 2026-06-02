@@ -29,30 +29,45 @@ The route guard in `App.jsx` normalizes roles by stripping `_Admin` before compa
 
 ## RFQ State Machine — Quick Reference
 
+The state machine uses named `status` CharField values (not lev1–lev9 booleans). Import and use the `STATUS` constants from `src/constants/rfqStatus.js` — never use raw strings.
+
 ```
-lev1 (created)
-  → lev2 (ind. draft)
-  → lev3 (pending ind. admin approval)
-  → lev4 (purchases inbox)
-  → lev5 (purchases draft — supplier list being built)
-  → lev6 (published to suppliers — quotes open)
-  → lev7 (quote analysis)
-  → lev8 (pending final award)
-  → lev9 (awarded / closed)
+industrialization_draft  (Ind engineer + Ind_Admin)
+  ↓ [submitted_for_review=True → in Ind_Admin inbox]
+  ↓ Ind_Admin approves → sent_to_purchases
+sent_to_purchases        (Purchases inbox)
+  ↓ Purchases assigns suppliers → purchases_draft
+purchases_draft          (Purchases builds supplier list)
+  ↓ [submitted_for_review=True → in Purchases_Admin inbox]
+  ↓ Purchases_Admin approves → sent_to_suppliers
+sent_to_suppliers        (Published — suppliers invited, no responses yet)
+  ↓ First supplier submits → waiting_for_suppliers
+waiting_for_suppliers    (Quote analysis — more suppliers can still submit)
+  ↓ Purchases selects winner → supplier_selected
+supplier_selected        (Winner chosen — pending final award)
+  ↓ Purchases_Admin approves → rfq_closed
+rfq_closed               (Awarded and frozen)
 ```
 
-The frontend expresses these levels as human-readable status strings. The mapping is:
+| `status` value (snake_case) | Who acts | Human label |
+|-----------------------------|---------|-------------|
+| `industrialization_draft` | Ind engineer + Ind_Admin | Industrialization Draft |
+| `sent_to_purchases` | Purchases team | Sent to Purchases |
+| `purchases_draft` | Purchases (supplier list) | Purchases Draft |
+| `sent_to_suppliers` | Supplier portal | Sent to Suppliers |
+| `waiting_for_suppliers` | Purchases analysis | Waiting for Suppliers |
+| `supplier_selected` | Purchases_Admin final award | Supplier Selected |
+| `rfq_closed` | Read-only | RFQ Closed |
 
-| Frontend status string | Backend level |
-|------------------------|--------------|
-| `industrialization draft` | lev2 |
-| `sent to purchases` | lev3 → lev4 (transition) |
-| `purchases draft` | lev5 |
-| `sent to suppliers` | lev6 |
-| `waiting for suppliers` | lev6 (some responded, not all) |
-| `supplier response` | lev7 |
-| `supplier selected` | lev8 |
-| `rfq closed` | lev9 |
+`submitted_for_review` flag distinguishes "draft in progress" vs "pending admin action" within `industrialization_draft` and `purchases_draft`.
+
+Supplier-level display (derived from `RFQ_Assignment`, injected by `normalizeRFQDetail`):
+
+| Display in frontend | Condition |
+|---------------------|-----------|
+| Quote form visible | `status` is `sent_to_suppliers` or `waiting_for_suppliers` |
+| `is_winner: true` | `status === supplier_selected` and this supplier won |
+| `is_winner: false` | `status === supplier_selected` and this supplier lost |
 
 ---
 
@@ -121,7 +136,7 @@ Computed in the frontend via `CryptoJS.HmacSHA256(bodyString, "clave_secreta")`.
 
 ### POST `/api/auth/token/refresh/`
 
-**Caller:** Not yet wired — needed in `api.js` as a request interceptor.
+**Caller:** `api.js` — `refreshAccessToken()` called automatically by `apiFetch()` on any `401` response.
 
 **Trigger:** Any API call returns `401 Unauthorized` with an expired access token.
 
@@ -141,117 +156,58 @@ Computed in the frontend via `CryptoJS.HmacSHA256(bodyString, "clave_secreta")`.
 
 ## 2. RFQ Lists
 
-These are the endpoints `api.js` will call when its JSON-backed functions are swapped to real fetches. Each function currently filters `rfqs-data.json`; the filtering logic should move to the backend via query parameters.
+All list calls use a single endpoint: `GET /api/rfqs/lista/?vista=all|draft`. Role scoping is automatic (backend filters by JWT user group). `api.js` functions call the correct `vista` parameter and apply additional client-side filtering where needed. Every row's `id` is an integer from `id_rfq`.
 
----
-
-### GET `/api/rfqs/lista/` — Industrialization: All RFQs
-
-**api.js function:** `getIndustrializationAllRFQs()`
-**Caller:** `Industrialization/AllRFQ.jsx` — on component mount
-
-**Logic:** Returns all RFQs that Industrialization can see in their active view (anything not in draft status). The component filters server-side via the `exclude_drafts` param so the table shows progress already made.
-
-**Query params needed:**
-```
-GET /api/rfqs/lista/?exclude_statuses=lev2
-```
-Or a role-scoped endpoint:
-```
-GET /api/rfqs/lista/?role=industrialization
-```
-
-**Expected response:**
+**Backend response shape (after `normalizeRFQ` in `api.js`):**
 ```json
 {
-  "rfqs": [
-    {
-      "id": "SOL-001",
-      "title": "High Precision Industrial Components",
-      "category": "Metal",
-      "priority": "High",
-      "status": "sent to purchases",
-      "lastModified": "2024-04-08",
-      "stage3": { "data": { "responses": [] } }
-    }
-  ]
+  "id": 42,
+  "title": "Molde Fascia Delantera",
+  "type": "mold",
+  "category": "Metal",
+  "priority": "High",
+  "status": "sent_to_purchases",
+  "submitted_for_review": false,
+  "lastModified": "2024-04-08",
+  "createdBy": "ind_user",
+  "offersCount": 2,
+  "stage1": { "data": { "completionPercentage": 75 } },
+  "stage3": { "data": { "responses": [ ... ] } }
 }
 ```
 
-**Frontend consumes:**
-- `id`, `title`, `category`, `priority`, `status`, `lastModified` → table row fields
-- `stage3.data.responses.length` → "Offers" column count
-
-**Row click:** navigates to `/Industrialization/rfq/{id}`
+`status` is always snake_case — use `STATUS_LABEL[status]` from `src/constants/rfqStatus.js` for display.
 
 ---
 
-### GET `/api/rfqs/lista/?status=lev2` — Industrialization: Drafts
+### Industrialization — All RFQs
+**api.js:** `getIndustrializationAllRFQs()` → `GET /api/rfqs/lista/?vista=all`
+Returns RFQs in `sent_to_purchases` and beyond (left Ind). Row click → `/Industrialization/rfq/{id}`.
 
-**api.js function:** `getIndustrializationDrafts()`
-**Caller:** `Industrialization/Drafts.jsx` — on component mount
+### Industrialization — Drafts
+**api.js:** `getIndustrializationDrafts()` → `GET /api/rfqs/lista/?vista=draft`
+Returns **all** `industrialization_draft` RFQs (not filtered by creator). `completionPercentage` from backend drives the progress bar column.
 
-**Logic:** Only RFQs at level 2 (Industrialization draft). These are in-progress RFQs the engineer hasn't submitted for approval yet.
+### Purchases — All RFQs
+**api.js:** `getPurchasesAllRFQs()` → `GET /api/rfqs/lista/?vista=all`
+Returns RFQs in `sent_to_suppliers` and beyond.
 
-**Expected response fields additionally needed:**
-```json
-"stage1": { "data": { "completionPercentage": 65 } }
-```
-The `completionPercentage` drives the progress bar column in the Drafts table.
+### Purchases — Inbox (Not Answered)
+**api.js:** `getPurchasesInbox()` → `GET /api/rfqs/lista/?vista=draft` filtered client-side to `status === 'sent_to_purchases'`
 
----
+### Purchases — Drafts
+**api.js:** `getPurchasesDrafts()` → `GET /api/rfqs/lista/?vista=draft` filtered client-side to `status === 'purchases_draft'`
 
-### GET `/api/rfqs/lista/?role=purchases` — Purchases: All RFQs
+### Suppliers — All RFQs
+**api.js:** `getSuppliersAllRFQs()` → `GET /api/rfqs/lista/?vista=all`
+Scoped to assigned RFQs in `waiting_for_suppliers`, `supplier_selected`, `rfq_closed`.
 
-**api.js function:** `getPurchasesAllRFQs()`
-**Caller:** `Purchases/AllRFQ.jsx` — on component mount
+### Suppliers — Drafts (unresponded invitations)
+**api.js:** `getSuppliersDrafts()` → `GET /api/rfqs/lista/?vista=draft`
+Returns assigned RFQs in `sent_to_suppliers` / `waiting_for_suppliers` where `has_responded=False`.
 
-**Logic:** All RFQs in the Purchases active workflow (lev5–lev9, i.e. everything after the Purchases inbox). Excludes lev2/lev3/lev4 which are either drafts or the inbox.
-
----
-
-### GET `/api/rfqs/lista/?status=lev5` — Purchases: Drafts
-
-**api.js function:** `getPurchasesDrafts()`
-**Caller:** `Purchases/Drafts.jsx`
-
-**Logic:** RFQs where Purchases is currently editing the supplier list (lev5). Same shape as Industrialization drafts, uses `completionPercentage`.
-
----
-
-### GET `/api/rfqs/lista/?status=lev4` — Purchases: Inbox (Not Answered)
-
-**api.js function:** `getPurchasesInbox()`
-**Caller:** `Purchases/NotAnsweredRFQ.jsx`
-
-**Logic:** RFQs that Industrialization approved and sent to Purchases but which Purchases hasn't yet accepted/started working on. This is the Purchases "inbox". Columns are minimal: id, title, category, lastModified.
-
----
-
-### GET `/api/rfqs/lista/?role=suppliers` — Suppliers: All RFQs
-
-**api.js function:** `getSuppliersAllRFQs()`
-**Caller:** `Suppliers/AllRFQ.jsx`
-
-**Logic:** All RFQs assigned to this specific supplier that are in an active state (lev6–lev9). Must be scoped to the authenticated supplier's ID so they only see their own assignments.
-
----
-
-### GET `/api/rfqs/lista/?status=supplier_draft` — Suppliers: Drafts
-
-**api.js function:** `getSuppliersDrafts()`
-**Caller:** `Suppliers/Drafts.jsx`
-
-**Logic:** Supplier's own quote responses that are saved as draft (not yet submitted). These are draft *responses*, not draft RFQs — conceptually different from the Industrialization draft view.
-
----
-
-### GET `/api/rfqs/lista/?status=lev6&no_response=true` — Suppliers: Inbox
-
-**api.js function:** `getSuppliersInbox()`
-**Caller:** `Suppliers/NotAnsweredRFQ.jsx`
-
-**Logic:** RFQs this supplier has been invited to quote for but hasn't responded to yet. Drives the "Not Answered RFQs" view — the supplier's action queue.
+### Suppliers — Inbox (Not Answered)
+**api.js:** `getSuppliersInbox()` → same as Drafts
 
 ---
 
@@ -262,183 +218,97 @@ The `completionPercentage` drives the progress bar column in the Drafts table.
 **Caller:** `components/layout/RFQDetails.jsx` — on mount, `id` comes from `useParams()`
 **Triggered by:** Clicking any row in any RFQ table (all three roles)
 
-**Logic:** Fetches the full RFQ object with all three stages. The component determines which stages to display and whether edit buttons appear based on the URL path (derives `userRole` from `location.pathname`):
-- `/Industrialization/rfq/:id` → can edit stage1 (specifications)
-- `/Purchases/rfq/:id` → can edit stage2 (metadata), cannot see stage2 data as Supplier
-- `/Suppliers/rfq/:id` → can edit stage3 (responses), stage2 is hidden
+**Logic:** Fetches the full RFQ object normalized by `normalizeRFQDetail()` in `api.js`. The component determines which stages to display based on the URL path (`userRole` from `location.pathname`):
+- `/Industrialization/rfq/:id` → can edit stage1 (specifications + document uploads via `handleDocUpload()`); "Submit for Approval" button added alongside "Save Changes"
+- `/Purchases/rfq/:id` → can edit stage2 (metadata + supplier picker); stage2 hidden from Supplier role. Edit mode offers "Save as Draft" (`submitted_for_review=false`) and "Submit for Approval" (`submitted_for_review=true`); "Send to Suppliers" admin button only appears in ActionBar (not in edit mode)
+- `/Suppliers/rfq/:id` → sees `QuoteForm` in stage3, stage2 is hidden
 
-**Expected response:**
+**Actual normalized response shape (from `normalizeRFQDetail`):**
 ```json
 {
-  "id": "SOL-001",
-  "title": "...",
-  "description": "...",
-  "status": "sent to purchases",
+  "id": 42,
+  "title": "Molde Fascia Delantera",
+  "type": "mold",
+  "status": "sent_to_purchases",
   "priority": "High",
   "category": "Metal",
-  "createdAt": "2024-04-01",
   "lastModified": "2024-04-08",
-  "createdBy": "Maria Garcia",
+  "createdBy": "ind_user",
+  "submitted_for_review": false,
+  "is_winner": null,
+  "response_deadline": null,
+  "shipping_terms": "",
+  "quality_requirements": "",
   "stage1": {
     "name": "Industrialization",
-    "approvedBy": {
-      "name": "Maria Garcia",
-      "role": "Industrialization Manager",
-      "approvedDate": "2024-04-07",
-      "comments": "Approved"
-    },
     "data": {
-      "specifications": { "material": "...", "dimensions": "...", "..." : "..." },
-      "documents": [
-        { "id": 1, "name": "Tech_Specs.pdf", "size": "2.4 MB", "type": "PDF", "uploadedBy": "Maria Garcia", "date": "2024-04-01", "is3D": false },
-        { "id": 2, "name": "CAD_Model.stp", "size": "12.5 MB", "type": "STEP", "uploadedBy": "Carlos Lopez", "date": "2024-04-02", "is3D": true }
-      ],
-      "defaultPreviewFile": 2,
-      "completionPercentage": 100
+      "specifications": { "DESC": "...", "CUST": "...", "No_CAV": "2", ... },
+      "documents": [{ "id": 1, "name": "specs.pdf", "date": "2024-04-01", "type": "pdf", "is3D": false }],
+      "completionPercentage": 75
     }
   },
   "stage2": {
     "name": "Purchases",
-    "approvedBy": { "name": "Laura Fernandez", "approvedDate": null, "comments": "..." },
     "data": {
-      "suppliers": [
-        { "id": 1, "name": "Hydraulic Solutions Inc.", "contact": "...", "email": "...", "phone": "...", "status": "Pending", "amount": "-", "deadline": "2024-04-20", "invitedDate": "2024-04-05", "deliveryDate": null }
-      ],
-      "metadata": { "responseDeadline": "...", "remindersSent": 1, "priority": "...", "shippingTerms": "...", "qualityRequirements": "..." }
+      "suppliers": [{ "id": 6, "name": "supplier_user", "email": "...", "status": "Pending", "is_winner": false, "has_responded": false }],
+      "metadata": { "responseDeadline": null, "shippingTerms": "", "qualityRequirements": "" }
     }
   },
   "stage3": {
     "name": "Suppliers",
     "data": {
-      "responses": [
-        {
-          "id": 1,
-          "supplier": "RubberTech Industries",
-          "contact": "Paul White",
-          "email": "...",
-          "phone": "...",
-          "status": "Final Quote",
-          "amount": "$12,500",
-          "unitPrice": "$1.25",
-          "deliveryTime": "3-4 weeks",
-          "submittedDate": "2024-04-10",
-          "documents": ["Quote_RTI_001.pdf"],
-          "details": { "productionCapacity": "...", "paymentTerms": "...", "warranty": "..." }
-        }
-      ],
-      "statistics": { "responsesReceived": 2, "totalInvited": 3, "averageQuote": "$12,850" }
+      "responses": [{ "id": 0, "supplier": "supplier_user", "status": "Final Quote", "p1": {...}, "p2": {...} }],
+      "statistics": { "responsesReceived": 1, "totalInvited": 2 }
     }
   }
 }
 ```
 
-**Stage visibility rules enforced by the component:**
-- `stage2` is never shown when `userRole === 'suppliers'`
-- Edit buttons only appear when the user's role matches the stage
+`stage2` is `null` for Supplier role. `stage3` is `null` until `waiting_for_suppliers`.
 
 ---
 
 ### PATCH `/api/rfqs/{id}/especificaciones/`
 
-**Caller:** `RFQDetails.jsx` `saveSection('stage1')`
-**Triggered by:** Industrialization user clicks "Save Changes" after editing specs
-
-**Request body:**
-```json
-{
-  "specifications": {
-    "material": "7075 Aluminum Alloy",
-    "dimensions": "150mm x 75mm x 25mm",
-    "weight": "1.2 kg per unit",
-    "tolerance": "±0.01mm",
-    "surfaceFinish": "Ra 0.8μm",
-    "hardness": "HRC 45-50",
-    "piecesRequired": 500,
-    "piecesPerMonth": 100,
-    "testingRequired": "Dimensional, Hardness"
-  }
-}
-```
-
-**Frontend flow:** On success → updates local `rfqData` state in-place (no refetch needed). On error → shows inline error message.
+**Caller:** `RFQDetails.jsx` `saveSection('stage1')` → `saveSpecifications(id, payload)`
+**Request body for mold:** `{ "mold_info_p1": { "DESC": "...", "CUST": "..." }, "mold_info_p2": {...} }`
+**Request body for die:** `{ "die_trim": { "DESC": "...", "Press": "..." } }`
 
 ---
 
 ### PATCH `/api/rfqs/{id}/compras-metadata/`
 
-**Caller:** `RFQDetails.jsx` `saveSection('stage2')`
-**Triggered by:** Purchases user edits and saves RFQ metadata (deadline, terms, quality requirements)
-
-**Request body:**
-```json
-{
-  "metadata": {
-    "responseDeadline": "2024-04-30",
-    "remindersSent": 2,
-    "priority": "High - Urgent",
-    "shippingTerms": "FOB Origin",
-    "qualityRequirements": "ISO 9001:2024"
-  }
-}
-```
+**Caller:** `RFQDetails.jsx` `saveSection('stage2')` → `savePurchasesMetadata(id, metadata)`
+**Request body:** `{ "metadata": { "responseDeadline": "2024-04-30", "shippingTerms": "FOB Origin", "qualityRequirements": "ISO 9001" } }`
 
 ---
 
-## 4. RFQ State Transitions
+### GET `/api/rfqs/{id}/progreso/`
 
-These endpoints advance the RFQ through the state machine. They are not yet wired in the frontend — the `RFQDetails.jsx` component will need action buttons (e.g. "Send to Purchases", "Approve", "Publish to Suppliers") that call these.
-
-### POST `/api/rfqs/{id}/enviar-a-compras/`
-
-**Who uses it:** Industrialization user or Industrialization_Admin
-**When:** The RFQ is at lev2 (draft) or lev3 (pending approval) and is ready to move forward
-**Frontend trigger (to be added):** "Send to Purchases" button in `RFQDetails.jsx` stage1 section, visible only when `userRole === 'industrialization'` and status is `industrialization draft`
-
-**Logic:** Moves lev2 → lev3 (engineer sends for admin review) or lev3 → lev4 (admin approves, enters Purchases)
-
-**Request:** `{}` (no body needed, identity comes from JWT)
-
-**Expected response:** Updated RFQ status
+**Caller:** Available for on-demand refresh. Also injected into list responses as `completion_percentage`.
+**Response:** `{ "percentage": 75, "filled": 6, "total": 8, "filled_fields": [...], "missing_fields": [...] }`
 
 ---
 
-### POST `/api/rfqs/{id}/aprobar-industrial/`
+## 4. RFQ State Transitions (all wired in `RFQDetails.jsx` ActionBar)
 
-**Who uses it:** Industrialization_Admin
-**When:** RFQ is at lev3 (pending Ind. approval)
-**Frontend trigger:** Approve/Reject buttons in `RFQDetails.jsx` stage1, visible only to `Industrialization_Admin`
+| Action | Shown to | When | api.js function | Backend endpoint |
+|--------|----------|------|-----------------|-----------------|
+| Submit for Approval | Ind (non-admin) | `IND_DRAFT` + not submitted | `submitRFQForReview(id, type, tool)` | `PUT /api/rfq/{pk}/editar/` `{is_draft:false}` |
+| Save + Submit for Approval | Ind (any) | `IND_DRAFT`, in stage1 edit mode | `saveAndSubmit()` (saves specs then submits) | `PATCH /rfqs/{pk}/especificaciones/` then `submitRFQForReview` |
+| Approve → Purchases | Ind_Admin | `IND_DRAFT` + submitted | `approveRFQInd(id, true)` | `PATCH /api/rfqs/{pk}/revision-ind/` `{is_approved:true}` |
+| Reject → Engineer | Ind_Admin | `IND_DRAFT` + submitted | `approveRFQInd(id, false)` | `PATCH /api/rfqs/{pk}/revision-ind/` `{is_approved:false}` |
+| Save as Draft (suppliers) | Purchases (any) | `SENT_TO_PURCHASES` or `PURCHASES_DRAFT`, in stage2 edit | `savePurchaseDraft()` → `assignSuppliers(id, ids, true)` | `PUT /api/rfqs/{pk}/asignar-proveedores/` `{is_draft:true}` |
+| Submit Supplier List | Purchases (any) | same, at least 1 supplier selected | `submitForApproval()` → `assignSuppliers(id, ids, false)` | `PUT /api/rfqs/{pk}/asignar-proveedores/` `{is_draft:false}` |
+| Approve Supplier List | Purchases_Admin | `PURCHASES_DRAFT` + submitted | `approveSupplierList(id, 'aprobar')` | `PATCH /api/rfqs/{pk}/aprobar-proveedores/` |
+| Reject Supplier List | Purchases_Admin | `PURCHASES_DRAFT` + submitted | `approveSupplierList(id, 'rechazar')` | same |
+| Select as Winner | Purchases (any) | `WAITING_FOR_SUPPLIERS` (per response card) | `selectWinner(id, supplierId)` | `PATCH /api/rfqs/{pk}/seleccionar-proveedor/` `{proveedor_id:N}` |
+| Final Award | Purchases_Admin | `SUPPLIER_SELECTED` | `finalManagerDecision(id, 'aprobar')` | `PATCH /api/rfqs/{pk}/fallo-gerencial/` |
+| Reject Award | Purchases_Admin | `SUPPLIER_SELECTED` | `finalManagerDecision(id, 'rechazar')` | same |
 
-**Request:**
-```json
-{ "action": "approve", "comments": "Technical specs verified" }
-```
-or
-```json
-{ "action": "reject", "comments": "Missing tolerance data" }
-```
+Supplier quoting: `QuoteForm.jsx` renders inside stage3 and calls `submitQuote(rfqId, { is_draft, mold_cost_p1, … })` → `POST /api/rfqs/{pk}/cotizar/`.
 
----
-
-### POST `/api/rfqs/{id}/publicar-proveedores/`
-
-**Who uses it:** Purchases_Admin
-**When:** RFQ is at lev5 (supplier list ready) → moves to lev6 (published)
-**Frontend trigger:** "Publish to Suppliers" button in `RFQDetails.jsx` stage2, visible only to `Purchases_Admin`
-
-**Request:** `{}` — the supplier list is already part of the RFQ at this point
-
----
-
-### POST `/api/rfqs/{id}/seleccionar-proveedor/`
-
-**Who uses it:** Purchases or Purchases_Admin
-**When:** RFQ is at lev7 (quote analysis) → moves to lev8 then lev9
-**Frontend trigger:** "Accept" button inside a supplier response card in `RFQDetails.jsx` stage3
-
-**Request:**
-```json
-{ "response_id": 1, "comments": "Best value for quality" }
-```
+After `sendToSuppliers()` completes (Purchases_Admin approves supplier list from ActionBar), the component navigates to `/Purchases/All-RFQ`.
 
 ---
 
@@ -526,59 +396,49 @@ or
 
 ## 6. Supplier Responses (Quotes)
 
-These actions happen inside `RFQDetails.jsx` stage3 section, visible when `userRole === 'suppliers'`.
+These actions happen inside `RFQDetails.jsx` stage3 section, visible when `userRole === 'suppliers'`. Quotes are full cost-breakdown forms (mold: 5 parts, die: 4 parts), not simple amount fields.
 
-### POST `/api/rfqs/{id}/respuestas/`
+### POST `/api/rfqs/{id}/cotizar/`
 
-**Caller:** `RFQDetails.jsx` — `createNewResponse()` button
-**Trigger:** Supplier clicks "Create Response" on an RFQ at `sent to suppliers` or `waiting for suppliers` status
+**Caller:** `Suppliers/QuoteForm.jsx` — `submitQuote(rfqId, data)`
+**Trigger:** Supplier fills out the tabbed quote form and clicks "Submit Quote" or "Save Draft"
 
-**Request body:**
+**Request body — Mold:**
 ```json
 {
-  "status": "Draft",
-  "amount": null,
-  "unit_price": null,
-  "delivery_time": null
+  "is_draft": false,
+  "mold_cost_p1": { "Company": "SupplierCo", "Country": "MX", "Base_currency": "USD" },
+  "mold_cost_p2": { "DieFrame_Unit": 1, "DieFrame_PriceUnit": 5000.0, "DieFrame_Total": 5000.0 },
+  "mold_cost_p3": {},
+  "mold_cost_p4": {},
+  "mold_cost_p5": {}
 }
 ```
 
-**Expected response:** The newly created response object with its `id`
-
-**Frontend flow:** Appends the new response card to stage3 in local state. Supplier then fills it in via the edit form.
-
----
-
-### PATCH `/api/rfqs/{id}/respuestas/{response_id}/`
-
-**Caller:** `RFQDetails.jsx` — `saveSection('stage3')`
-**Trigger:** Supplier edits response fields and clicks "Save Changes"
-
-**Request body:**
+**Request body — Die:**
 ```json
 {
-  "supplier": "RubberTech Industries",
-  "contact": "Paul White",
-  "email": "paul@rubbertech.com",
-  "amount": "$12,500",
-  "unit_price": "$1.25",
-  "delivery_time": "3-4 weeks",
-  "status": "Final Quote"
+  "is_draft": false,
+  "die_cost_p1": { "Elaborated_by": "supplier_user", "Country": "MX" },
+  "die_cost_p2": {},
+  "die_cost_p3": {},
+  "die_cost_p4": {}
 }
 ```
 
----
+**`is_draft` behavior:**
+- `true` → saves data, RFQ status unchanged
+- `false` → sets `RFQ_Assignment.has_responded=True`; if RFQ was `sent_to_suppliers`, advances to `waiting_for_suppliers`
 
-### DELETE `/api/rfqs/{id}/respuestas/{response_id}/`
+**Expected response:** `{ "message": "..." }`
 
-**Caller:** `RFQDetails.jsx` — `deleteResponse(id)` or `deleteResponseInEdit(id)`
-**Trigger:** Delete icon on a response card (only shown for `userRole === 'suppliers'`)
+**Frontend flow:** On success, `QuoteForm` shows a confirmation message. The form pre-populates on re-entry from `stage3.responses[0].p1..p5` in the detail response.
 
 ---
 
 ## 7. Documents / File Attachments
 
-Document buttons (`Download`, `Preview 3D`) are rendered in `RFQDetails.jsx` stage1. Upload happens in `CreateRFQ.jsx` step 3.
+Document buttons (`Download`, `Preview 3D`) are rendered in `RFQDetails.jsx` stage1. Upload happens in `CreateRFQ.jsx` step 3 (after RFQ creation) and in `RFQDetails.jsx` stage1 edit mode.
 
 ### GET `/api/rfqs/{id}/documentos/{doc_id}/download/`
 
@@ -590,8 +450,8 @@ Document buttons (`Download`, `Preview 3D`) are rendered in `RFQDetails.jsx` sta
 
 ### POST `/api/rfqs/{id}/documentos/`
 
-**Caller:** `CreateRFQ.jsx` — `UploadCard` components in step 3
-**Trigger:** User selects and uploads a file (PDF, PPT, or CAD)
+**Caller:** `CreateRFQ.jsx` — after a successful RFQ creation (`id_rfq` from creation response), uploads all selected files via `uploadDocument(rfqId, file, type)`. Also callable from `RFQDetails.jsx` stage1 edit mode via `handleDocUpload()`.
+**Trigger:** User selects files in `UploadCard` components in step 3, then submits the RFQ
 
 **Request:** `multipart/form-data`
 ```
@@ -617,28 +477,23 @@ type: "pdf" | "presentation" | "3d"
 
 **Logic:** Returns all internal system users (not suppliers). Both Industrialization and Purchases see the same user list (admins can manage, standard users view only).
 
-**Expected response:**
+**Actual backend response (array, not wrapped):**
 ```json
-{
-  "users": [
-    {
-      "id": "maria-garcia",
-      "name": "Maria Garcia",
-      "email": "maria.garcia@bocar.com",
-      "role": "Industrialization Manager",
-      "department": "Industrialization",
-      "status": "active",
-      "lastLogin": "2024-04-15T10:30:00Z",
-      "createdAt": "2024-01-15",
-      "createdBy": "System Admin",
-      "permissions": ["View RFQs", "Create RFQs", "Approve RFQs"],
-      "recentActivity": [
-        { "action": "Approved RFQ SOL-001", "date": "2024-04-15T10:30:00Z" }
-      ]
-    }
-  ]
-}
+[
+  {
+    "id": 4,
+    "username": "ind_admin",
+    "first_name": "Maria",
+    "last_name": "Garcia",
+    "email": "maria.garcia@bocar.com",
+    "is_active": true,
+    "last_login": "2024-04-15T10:30:00Z",
+    "grupos": ["Industrialization_Admin"],
+    "department": "Industrialization"
+  }
+]
 ```
+Normalized by `normalizeUser()` into `{ id, name, username, email, role, department, status, lastLogin, permissions }`. `createdAt` is always `null` (Django `User.date_joined` not in serializer). `recentActivity` is always `[]`.
 
 ---
 
@@ -657,19 +512,20 @@ type: "pdf" | "presentation" | "3d"
 **Caller:** `UserDetails.jsx` — `handleSave()` when `isNewUser === true`
 **Trigger:** Navigating to `/Industrialization/user/new-user` and filling + submitting the form
 
-**Request body:**
+**Request body (required fields):**
 ```json
 {
-  "name": "Juan Perez",
+  "username": "juan.perez",
+  "password": "SecurePass1!",
   "email": "juan.perez@bocar.com",
-  "role": "Industrialization Engineer",
-  "department": "Industrialization",
-  "status": "active",
-  "permissions": ["View RFQs", "Create RFQs", "Edit Drafts"]
+  "rol": "Industrialization"
 }
 ```
+Valid `rol` values: `SuperAdmin`, `Industrialization`, `Industrialization_Admin`, `Purchases`, `Purchases_Admin`, `Supplier`.
 
 **Frontend flow:** On success → navigates to `/Industrialization/user/{newId}` using the ID returned by the backend.
+
+**Note:** `CrearUsuarioView` responds with `UsuarioCreateSerializer` (minimal: `username`, `email`). `normalizeUser` will return an incomplete object until the user is re-fetched. Not a crash because the post-creation navigate uses the returned `id`.
 
 ---
 
@@ -678,12 +534,11 @@ type: "pdf" | "presentation" | "3d"
 **Caller:** `UserDetails.jsx` — `handleSave()` when editing an existing user
 **Trigger:** Edit User → modify fields → Save Changes
 
-**Request body:** Partial update — only the changed fields:
+**Request body:** Partial update — accepted fields: `email`, `first_name`, `last_name`, `rol` (exact Group name), `is_active` (boolean):
 ```json
 {
-  "role": "Industrialization Manager",
-  "status": "inactive",
-  "permissions": ["View RFQs"]
+  "rol": "Industrialization_Admin",
+  "is_active": false
 }
 ```
 
@@ -707,34 +562,13 @@ type: "pdf" | "presentation" | "3d"
 
 ## 9. Supplier Management
 
-### GET `/api/proveedores/listar/`
+### GET `/api/proveedores/`
 
 **api.js function:** `getSuppliers()`
 **Caller:** `Purchases/SuppliersList.jsx` — on mount
 **Trigger:** Navigating to Purchases → "Suppliers List" tab
 
-**Expected response:**
-```json
-{
-  "suppliers": [
-    {
-      "id": "plastic-solutions",
-      "name": "Plastic Solutions S.A.",
-      "email": "maria@company.com",
-      "role": "Supplier",
-      "department": "Suppliers",
-      "status": "active",
-      "lastLogin": "2024-04-15T10:30:00Z",
-      "createdAt": "2024-01-15",
-      "createdBy": "System Admin",
-      "permissions": ["View RFQs", "Respond to RFQs"],
-      "recentActivity": [
-        { "action": "Sent a response to RFQ SOL-005", "date": "2024-03-25T00:00:00Z" }
-      ]
-    }
-  ]
-}
-```
+**Expected response:** Array of supplier objects (each with `id`, `username`, `first_name`, `last_name`, `email`, `is_active`, `last_login`). Normalized by `normalizeSupplier()` in `api.js`.
 
 **Row click:** navigates to `/Purchases/supplier/{id}` which renders `UserDetails.jsx`
 
@@ -743,61 +577,70 @@ type: "pdf" | "presentation" | "3d"
 ### GET `/api/proveedores/{id}/`
 
 **api.js function:** `getSupplierById(id)`
-**Caller:** `UserDetails.jsx` — when `id` resolves to a supplier (found in `suppliersData` in the JSON layer)
+**Caller:** `UserDetails.jsx` — when `id` resolves to a supplier
 **Trigger:** Clicking a supplier row from SuppliersList
 
 ---
 
-### POST `/api/proveedores/crear/`
+### POST `/api/proveedores/`
 
+**api.js function:** `createSupplier(data)`
 **Caller:** `UserDetails.jsx` when navigated to `/Purchases/supplier/new-supplier`
-**Request body:** Same shape as user creation but for supplier accounts:
-```json
-{
-  "name": "New Supplier Co.",
-  "email": "contact@newsupplier.com",
-  "status": "active"
-}
-```
+**Request body:** Must include `username`, `password`, `email`. Backend forces `rol: 'Supplier'`.
 
 ---
 
 ### PATCH `/api/proveedores/{id}/`
 
+**api.js function:** `updateSupplier(id, data)`
 **Caller:** `UserDetails.jsx` — edit + save on an existing supplier profile
 
 ---
 
 ### DELETE `/api/proveedores/{id}/`
 
+**api.js function:** `deleteSupplier(id)`
 **Caller:** `UserDetails.jsx` — "Delete User" quick action (reused for suppliers)
 
 ---
 
 ## 10. RFQ ↔ Supplier Assignment
 
-These endpoints are needed by `RFQDetails.jsx` (Purchases view, stage2) when Purchases assigns which suppliers to invite.
+Supplier assignment uses a single bulk PUT endpoint. The Stage 2 panel in `RFQDetails.jsx` now has a full **Supplier Picker** UI: selected suppliers shown as removable badges, live-search input, and a clickable results list to add suppliers. Two save modes are available via the edit buttons.
 
-### GET `/api/proveedores/listar/`
+### GET `/api/proveedores/`
 
-**Caller:** `RFQDetails.jsx` stage2 — "Add Supplier" dropdown (to be implemented)
-**Trigger:** Purchases user clicks to add a supplier to the RFQ's supplier list
+**api.js function:** `getSuppliers()`
+**Caller:** `RFQDetails.jsx` — called when `startEditing('stage2')` is triggered
+**Trigger:** Purchases user clicks "Edit" on the Stage 2 (Purchases) section of an RFQ detail page
 
 ---
 
-### POST `/api/rfqs/{id}/asignar-proveedor/`
+### PUT `/api/rfqs/{id}/asignar-proveedores/`
 
-**Caller:** `RFQDetails.jsx` stage2 — add supplier to an RFQ's supplier list
+**api.js function:** `assignSuppliers(rfqId, proveedoresIds, isDraft=false)`
+**Callers:**
+- `RFQDetails.jsx` `savePurchaseDraft()` → `assignSuppliers(id, supplierIds, true)` — saves without submitting; navigates to `/Purchases/Drafts`
+- `RFQDetails.jsx` `submitForApproval()` → `assignSuppliers(id, supplierIds, false)` — submits for Purchases_Admin review; navigates to `/Purchases/Drafts`
+
 **Request body:**
 ```json
-{ "supplier_id": 3, "deadline": "2024-04-20" }
+{ "proveedores_ids": [6, 9], "is_draft": false }
 ```
+Replaces the entire supplier list atomically.
 
----
+**`is_draft` behavior:**
+- `true` → sets `submitted_for_review=False`, allows empty `proveedores_ids`
+- `false` (default) → sets `submitted_for_review=True`, requires at least one supplier; Submit button is disabled in the UI when no suppliers are selected
 
-### DELETE `/api/rfqs/{id}/asignar-proveedor/{supplier_id}/`
+**State transitions:**
+- `sent_to_purchases` → advances to `purchases_draft`
+- `purchases_draft` → stays `purchases_draft`, supplier list replaced
 
-**Caller:** `RFQDetails.jsx` stage2 — remove a supplier from the invitation list before publishing
+**Response 200:**
+```json
+{ "message": "...", "cantidad_proveedores": 2, "submitted_for_review": false }
+```
 
 ---
 
@@ -838,9 +681,9 @@ GET /api/notificaciones/
 ```
 
 **Frontend consumes:**
-- Notifications are filtered client-side by `enabledCategories` (localStorage preference) and `userRole`
-- `unreadCount` badge on NavBar is derived from `filteredNotifications.filter(n => !n.read).length`
-- `categoryId` is resolved to a full category object using `NOTIFICATION_CATEGORIES` (now from `notification-config.json`)
+- `unreadCount` badge on NavBar is derived from `notifications.filter(n => !n.read).length`
+- `categoryId` is resolved to a full category object using `NOTIFICATION_CATEGORIES` (from `notification-config.json`)
+- Notification category preferences (enabled/disabled toggles) are stored in localStorage under `notif_prefs_{userId}` (per-user) or `notif_prefs_global` (fallback). These preferences are managed in `UserDetails.jsx` via `NotificationPreferencesCard`, not in `NotisSidebar.jsx`.
 
 ---
 
@@ -917,28 +760,51 @@ For "mark all as read", call `PATCH /api/notificaciones/` with:
 
 ---
 
-## 13. api.js → Real Endpoint Migration Map
+## 13. api.js → Real Endpoint Map (current implementation)
 
-When switching from JSON to real backend, replace the body of each `api.js` function. The signatures stay identical so components don't change.
+All functions below are **already wired** to real endpoints in `api.js`. IDs are integers throughout.
 
-| api.js function | Real endpoint |
-|-----------------|--------------|
-| `getRFQById(id)` | `GET /api/rfqs/{id}/` |
-| `getIndustrializationAllRFQs()` | `GET /api/rfqs/lista/?exclude_lev=lev2` |
-| `getIndustrializationDrafts()` | `GET /api/rfqs/lista/?status=lev2` |
-| `getPurchasesAllRFQs()` | `GET /api/rfqs/lista/?role=purchases&exclude_inbox=true` |
-| `getPurchasesDrafts()` | `GET /api/rfqs/lista/?status=lev5` |
-| `getPurchasesInbox()` | `GET /api/rfqs/lista/?status=lev4` |
-| `getSuppliersAllRFQs()` | `GET /api/rfqs/lista/?assigned_to_me=true&min_lev=6` |
-| `getSuppliersDrafts()` | `GET /api/rfqs/lista/?my_response_status=draft` |
-| `getSuppliersInbox()` | `GET /api/rfqs/lista/?status=lev6&my_response=none` |
-| `getUsers()` | `GET /api/usuarios/listar/` |
-| `getUserById(id)` | `GET /api/usuarios/{id}/` |
-| `getSuppliers()` | `GET /api/proveedores/listar/` |
-| `getSupplierById(id)` | `GET /api/proveedores/{id}/` |
-| `getNotifications(dept)` | `GET /api/notificaciones/` |
-| `getDashboardData(range)` | `GET /api/dashboard/industrializacion/?range={range}` |
-| `getRFQFormConfig()` | Static — keep reading from JSON (no backend needed) |
+| api.js function | Real endpoint | Notes |
+|-----------------|--------------|-------|
+| `getRFQById(id)` | `GET /api/rfqs/{id}/` | Returns `normalizeRFQDetail()` shape |
+| `getIndustrializationAllRFQs()` | `GET /api/rfqs/lista/?vista=all` | Ind JWT → `sent_to_purchases` and beyond |
+| `getIndustrializationDrafts()` | `GET /api/rfqs/lista/?vista=draft` | Own `industrialization_draft` RFQs |
+| `getPurchasesAllRFQs()` | `GET /api/rfqs/lista/?vista=all` | Purchases JWT → `sent_to_suppliers` and beyond |
+| `getPurchasesDrafts()` | `GET /api/rfqs/lista/?vista=draft` filtered to `purchases_draft` | |
+| `getPurchasesInbox()` | `GET /api/rfqs/lista/?vista=draft` filtered to `sent_to_purchases` | |
+| `getSuppliersAllRFQs()` | `GET /api/rfqs/lista/?vista=all` | Supplier JWT → assigned RFQs |
+| `getSuppliersDrafts()` | `GET /api/rfqs/lista/?vista=draft` | Unresponded assigned RFQs |
+| `getSuppliersInbox()` | `GET /api/rfqs/lista/?vista=draft` | Same as drafts |
+| `getRFQProgress(id)` | `GET /api/rfqs/{id}/progreso/` | Returns `{ percentage, filled, total }` |
+| `getUsers()` | `GET /api/usuarios/listar/` | Internal staff only (no Suppliers) |
+| `getUserById(id)` | `GET /api/usuarios/{id}/` | |
+| `createUser(data)` | `POST /api/usuarios/crear/` | Requires `username`, `password`, `email`, `rol` |
+| `updateUser(id, data)` | `PATCH /api/usuarios/{id}/` | |
+| `deleteUser(id)` | `DELETE /api/usuarios/{id}/` | |
+| `resetUserPassword(id)` | `POST /api/usuarios/{id}/reset-password/` | |
+| `getSuppliers()` | `GET /api/proveedores/` | |
+| `getSupplierById(id)` | `GET /api/proveedores/{id}/` | |
+| `createSupplier(data)` | `POST /api/proveedores/` | Forces `rol: 'Supplier'` |
+| `updateSupplier(id, data)` | `PATCH /api/proveedores/{id}/` | |
+| `deleteSupplier(id)` | `DELETE /api/proveedores/{id}/` | |
+| `getNotifications()` | `GET /api/notificaciones/` | Returns `{ notifications: [...] }` |
+| `markNotificationRead(id)` | `PATCH /api/notificaciones/{id}/` | Or `/api/notificaciones/` for all |
+| `clearNotifications()` | `DELETE /api/notificaciones/` | |
+| `getDashboardData(range)` | `GET /api/dashboard/industrializacion/?range={range}` | Returns `{ statusChange, rfqDistribution, kpis }` |
+| `getPurchasesDashboardData(range)` | `GET /api/dashboard/compras/?range={range}` | Same shape |
+| `getSupplierDashboardData()` | `GET /api/dashboard/proveedor/` | |
+| `submitRFQForReview(id, type, tool)` | `PUT /api/rfq/{id}/editar/` `{is_draft:false}` | |
+| `approveRFQInd(id, bool)` | `PATCH /api/rfqs/{id}/revision-ind/` | |
+| `assignSuppliers(id, ids[], isDraft=false)` | `PUT /api/rfqs/{id}/asignar-proveedores/` | `isDraft=true` → save draft; `isDraft=false` → submit for review |
+| `approveSupplierList(id, action)` | `PATCH /api/rfqs/{id}/aprobar-proveedores/` | |
+| `selectWinner(id, supplierId)` | `PATCH /api/rfqs/{id}/seleccionar-proveedor/` | |
+| `finalManagerDecision(id, action)` | `PATCH /api/rfqs/{id}/fallo-gerencial/` | |
+| `submitQuote(id, data)` | `POST /api/rfqs/{id}/cotizar/` | Used by `QuoteForm.jsx` |
+| `downloadDocument(rfqId, docId, name)` | `GET /api/rfqs/{rfqId}/documentos/{docId}/download/` | Fetch + blob |
+| `uploadDocument(rfqId, file, type)` | `POST /api/rfqs/{rfqId}/documentos/` | multipart/form-data |
+| `saveSpecifications(id, data)` | `PATCH /api/rfqs/{id}/especificaciones/` | |
+| `savePurchasesMetadata(id, meta)` | `PATCH /api/rfqs/{id}/compras-metadata/` | |
+| `getRFQFormConfig()` | Static JSON — no backend needed | |
 
 `NOTIFICATION_CATEGORIES` is also static config — keep reading from `notification-config.json`.
 
@@ -998,10 +864,16 @@ User clicks logout (handleLogout in App.jsx)
 | `/Purchases/All-RFQ` | `getPurchasesAllRFQs()` | row click → navigate |
 | `/Purchases/Drafts` | `getPurchasesDrafts()` | row click → navigate |
 | `/Purchases/Not-Answered-RFQs` | `getPurchasesInbox()` | row click → navigate |
-| `/Purchases/rfq/:id` | `getRFQById(id)` | Edit metadata → `PATCH /rfqs/{id}/compras-metadata/`; Publish → state transition |
+| `/Purchases/rfq/:id` | `getRFQById(id)` + `getSuppliers()` (on stage2 edit) | Edit metadata → `PATCH /rfqs/{id}/compras-metadata/`; Assign suppliers (draft) → `PUT /rfqs/{id}/asignar-proveedores/` `{is_draft:true}`; Submit for review → same `{is_draft:false}`; Publish → state transition |
 | `/Purchases/supplier/:id` | `getSupplierById(id)` | Save/Delete → supplier endpoints |
 | `/Suppliers/All-RFQ` | `getSuppliersAllRFQs()` | row click → navigate |
 | `/Suppliers/Drafts` | `getSuppliersDrafts()` | row click → navigate |
 | `/Suppliers/Not-Answered-RFQ` | `getSuppliersInbox()` | row click → navigate |
-| `/Suppliers/rfq/:id` | `getRFQById(id)` | Create response → `POST /rfqs/{id}/respuestas/`; Save quote → `PATCH /rfqs/{id}/respuestas/{id}/` |
+| `/Suppliers/rfq/:id` | `getRFQById(id)` | Submit quote → `POST /api/rfqs/{id}/cotizar/` via `submitQuote()` in `QuoteForm.jsx` |
+| `/Industrialization/Calendar` | — (simulated data) | Static — no backend call; role-specific events generated client-side |
+| `/Industrialization/Chatbot` | — (simulated data) | Static — no backend call; pattern-matched responses |
+| `/Purchases/Calendar` | — (simulated data) | Same as Industrialization variant |
+| `/Purchases/Chatbot` | — (simulated data) | Same as Industrialization variant |
+| `/Suppliers/Calendar` | — (simulated data) | Same as Industrialization variant |
+| `/Suppliers/Chatbot` | — (simulated data) | Same as Industrialization variant |
 | Anywhere (NavBar) | `getNotifications(role)` on role change | Mark read → `PATCH /notificaciones/{id}/`; Clear all → `DELETE /notificaciones/` |

@@ -13,7 +13,7 @@ class DIE_COSTBR_P1_S(models.Model):
     )
 
 
-    Company = models
+    Company = models.CharField(max_length=255, blank=True)
     Elaborated_by = models.CharField(max_length=255, blank=True)
     Country = models.CharField(max_length=255, blank=True)
     Base_currency = models.CharField(max_length=255, blank=True)

@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
+import { STATUS_LABEL } from '../../constants/rfqStatus';
 
 export default function TableComponent({
     title,
@@ -197,28 +198,26 @@ export default function TableComponent({
                     </span>
                 );
 
-            case 'rfq-status':
+            case 'rfq-status': {
+                // Keys are snake_case matching backend STATUS constants
                 const rfqStatusStyles = {
-                    "Industrialization Draft": { color: 'var(--text-tertiary)', backgroundColor: 'var(--surface-disabled)', borderColor: 'var(--border-default)' },
-                    "Sent to Purchases": { color: 'var(--status-active)', backgroundColor: 'rgba(16, 185, 129, 0.1)', borderColor: 'var(--status-active)' },
-
-                    "Purchases Draft": { color: 'var(--text-tertiary)', backgroundColor: 'var(--surface-disabled)', borderColor: 'var(--border-default)' },
-                    "Sent to Suppliers": { color: 'var(--status-active)', backgroundColor: 'rgba(16, 185, 129, 0.1)', borderColor: 'var(--status-active)' },
-
-                    "Suppliers Draft": { color: 'var(--text-tertiary)', backgroundColor: 'var(--surface-disabled)', borderColor: 'var(--border-default)' },
-                    "Suppliers Response": { color: 'var(--status-completed)', backgroundColor: 'rgba(59, 130, 246, 0.1)', borderColor: 'var(--status-completed)' },
-
-                    "Waiting for Suppliers": { color: 'var(--status-pending)', backgroundColor: 'rgba(245, 158, 11, 0.1)', borderColor: 'var(--status-pending)' },
-                    "Supplier Selected": { color: 'var(--status-completed)', backgroundColor: 'rgba(59, 130, 246, 0.1)', borderColor: 'var(--status-completed)' },
-
-                    "RFQ Closed": { color: 'var(--status-cancelled)', backgroundColor: 'rgba(239, 68, 68, 0.1)', borderColor: 'var(--status-cancelled)' },
+                    'industrialization_draft': { color: 'var(--text-tertiary)',       backgroundColor: 'var(--surface-disabled)',         borderColor: 'var(--border-default)' },
+                    'sent_to_purchases':       { color: 'var(--status-active)',       backgroundColor: 'rgba(16, 185, 129, 0.1)',         borderColor: 'var(--status-active)' },
+                    'purchases_draft':         { color: 'var(--text-tertiary)',       backgroundColor: 'var(--surface-disabled)',         borderColor: 'var(--border-default)' },
+                    'sent_to_suppliers':       { color: 'var(--status-active)',       backgroundColor: 'rgba(16, 185, 129, 0.1)',         borderColor: 'var(--status-active)' },
+                    'waiting_for_suppliers':   { color: 'var(--status-pending)',      backgroundColor: 'rgba(245, 158, 11, 0.1)',         borderColor: 'var(--status-pending)' },
+                    'supplier_selected':       { color: 'var(--status-completed)',    backgroundColor: 'rgba(59, 130, 246, 0.1)',         borderColor: 'var(--status-completed)' },
+                    'rfq_closed':              { color: 'var(--status-cancelled)',    backgroundColor: 'rgba(239, 68, 68, 0.1)',          borderColor: 'var(--status-cancelled)' },
                 };
-                const rfqStatusStyle = rfqStatusStyles[value?.toLowerCase()] || { color: 'var(--text-secondary)', backgroundColor: 'var(--surface-hover)', borderColor: 'var(--border-default)' };
+                const rfqStatusStyle = rfqStatusStyles[value] || { color: 'var(--text-secondary)', backgroundColor: 'var(--surface-hover)', borderColor: 'var(--border-default)' };
+                // Display human-readable label; fall back to raw value if unknown
+                const rfqStatusLabel = STATUS_LABEL[value] ?? value;
                 return (
                     <span className="inline-flex justify-center px-2.5 py-0.5 text-xs font-medium border" style={rfqStatusStyle}>
-                        {value}
+                        {rfqStatusLabel}
                     </span>
                 );
+            }
 
             case 'priority':
                 const priorityStyles = {

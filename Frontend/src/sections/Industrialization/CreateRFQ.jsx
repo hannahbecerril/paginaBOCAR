@@ -4,9 +4,9 @@ import Input from '../../components/ui/Input';
 import Button from '../../components/ui/Button';
 import UploadCard from '../../components/ui/UploadCard';
 import { CheckCircle, AlertCircle, ChevronRight, ChevronLeft, Save, Send, RefreshCw } from 'lucide-react';
-import { getRFQFormConfig } from '../api';
+import { getRFQFormConfig, uploadDocument } from '../api';
 
-const API_BASE = 'http://127.0.0.1:8000';
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
 
 // ── Sub-componentes del formulario ────────────────────────────────────────────
 function SectionTitle({ children }) {
@@ -121,20 +121,47 @@ export default function RFQForm() {
         };
     };
 
-    const validateStep = () => {
+    const getMissingFields = () => {
+        const missing = [];
         if (step === 1) {
-            if (!general.tool.trim()) return 'Tool name is required.';
-            if (!general.type) return 'Select a tool type (Mold or Die).';
+            if (!general.tool.trim()) missing.push('Tool Name');
+            if (!general.type) missing.push('Tool Type (Mold or Die)');
         }
         if (step === 2 && general.type === 'die') {
-            if (!dieTrim.DESC.trim()) return 'Description is required.';
-            if (!dieTrim.CUST.trim()) return 'Customer is required.';
+            const required = [
+                ['DESC', 'Description'], ['CUST', 'Customer'], ['PPY', 'Parts Per Year'],
+                ['PROJ_L', 'Project Life'], ['DTQB', 'Quote Deadline'], ['Press', 'Press Type'],
+                ['No_cavities', 'Number of Cavities'], ['Ful_Auto_proc', 'Fully Automatic Process'],
+                ['Presence_Detec', 'Presence Detectors'], ['Trim_proc', 'Trimming Process Condition'],
+                ['Pun_pins_req', 'Punch Pins Required'], ['Castings_supp', 'Castings Supplied By'],
+                ['Adjust_opt_tool_maker', 'Adjustments at Tool Maker'], ['Gas_spri', 'Gas Springs'],
+            ];
+            for (const [field, label] of required) {
+                if (!dieTrim[field] || (typeof dieTrim[field] === 'string' && !dieTrim[field].trim())) {
+                    missing.push(label);
+                }
+            }
         }
         if (step === 2 && general.type === 'mold') {
-            if (!moldP1.DESC.trim()) return 'Description is required.';
-            if (!moldP1.CUST.trim()) return 'Customer is required.';
+            const required = [
+                ['DESC', 'Description'], ['CUST', 'Customer'], ['PPY', 'Parts Per Year'],
+                ['PRLF', 'Project Life'], ['TT', 'Tool Type'], ['DTQ', 'Quote Deadline'],
+                ['ELAB', 'Elaborated By'], ['Smach', 'Machine (Smach)'], ['No_CAV', 'Number of Cavities'],
+            ];
+            for (const [field, label] of required) {
+                if (!moldP1[field] || (typeof moldP1[field] === 'string' && !moldP1[field].trim())) {
+                    missing.push(label);
+                }
+            }
         }
-        return null;
+        return missing;
+    };
+
+    const validateStep = () => {
+        const missing = getMissingFields();
+        if (missing.length === 0) return null;
+        if (missing.length === 1) return `"${missing[0]}" is required.`;
+        return `The following fields are required: ${missing.join(', ')}.`;
     };
 
     const handleNext = () => {
@@ -158,7 +185,7 @@ export default function RFQForm() {
         const token = Cookies.get('access_token');
 
         try {
-            const response = await fetch(`${API_BASE}/rfq/crear/`, {
+            const response = await fetch(`${API_BASE}/api/rfq/crear/`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -173,11 +200,26 @@ export default function RFQForm() {
                 throw new Error(data.error || 'Error creating RFQ');
             }
 
+            // Upload selected files for this RFQ
+            const uploadErrors = [];
+            const fileMap = [
+                { file: files.pdf, type: 'pdf' },
+                { file: files.ppt, type: 'presentation' },
+                { file: files.cad, type: '3d' },
+            ];
+            for (const { file, type } of fileMap) {
+                if (file) {
+                    try { await uploadDocument(data.id_rfq, file, type); }
+                    catch (e) { uploadErrors.push(`${type}: ${e.message}`); }
+                }
+            }
+
+            const uploadNote = uploadErrors.length > 0 ? ` (upload errors: ${uploadErrors.join(', ')})` : '';
             setFeedback({
-                type: 'success',
+                type: uploadErrors.length > 0 ? 'error' : 'success',
                 message: isDraft
-                    ? `Draft saved — RFQ #${data.id_rfq}`
-                    : `RFQ #${data.id_rfq} submitted for approval`,
+                    ? `Draft saved — RFQ #${data.id_rfq}${uploadNote}`
+                    : `RFQ #${data.id_rfq} submitted for approval${uploadNote}`,
             });
 
             if (!isDraft) {
@@ -555,34 +597,86 @@ export default function RFQForm() {
                 )}
 
                 {/* NAVIGATION */}
-                <div className="flex justify-between items-center mt-6">
-                    <div>
-                        {step > 1 && (
-                            <Button variant="outline" onClick={handleBack} disabled={loading}>
-                                <ChevronLeft size={16} /> Back
-                            </Button>
-                        )}
-                    </div>
-                    <div className="flex gap-3">
-                        {step >= 2 && (
-                            <Button variant="outline" onClick={() => submitRFQ(true)} disabled={loading}>
-                                <Save size={16} />
-                                {loading ? 'Saving...' : 'Save as Draft'}
-                            </Button>
-                        )}
+                {(() => {
+                    const missing = getMissingFields();
+                    const hasAnyCheck = general.type === 'die'
+                        ? dieBooleans && Object.values(dieBooleans).some(v => v.checked)
+                        : moldP2 && Object.values(moldP2).some(v => v.checked);
+                    const canSubmit = step === TOTAL_STEPS && hasAnyCheck && files.pdf !== null && files.cad !== null;
 
-                        {step < TOTAL_STEPS ? (
-                            <Button variant="primary" onClick={handleNext} disabled={loading || !general.type}>
-                                Next <ChevronRight size={16} />
-                            </Button>
-                        ) : (
-                            <Button variant="primary" onClick={() => submitRFQ(false)} disabled={loading}>
-                                <Send size={16} />
-                                {loading ? 'Submitting...' : 'Submit for Approval'}
-                            </Button>
-                        )}
-                    </div>
-                </div>
+                    // Step-3 missing items for the Submit button hint
+                    const step3Missing = step === TOTAL_STEPS ? [
+                        ...(!hasAnyCheck ? ['at least one data checkbox'] : []),
+                        ...(files.pdf === null ? ['Technical PDF'] : []),
+                        ...(files.cad === null ? ['CAD / 3D Model'] : []),
+                    ] : [];
+
+                    return (
+                        <>
+                            <div className="flex justify-between items-center mt-6">
+                                <div>
+                                    {step > 1 && (
+                                        <Button variant="outline" onClick={handleBack} disabled={loading}>
+                                            <ChevronLeft size={16} /> Back
+                                        </Button>
+                                    )}
+                                </div>
+                                <div className="flex gap-3">
+                                    {step >= 2 && (
+                                        <Button variant="outline" onClick={() => submitRFQ(true)} disabled={loading}>
+                                            <Save size={16} />
+                                            {loading ? 'Saving...' : 'Save as Draft'}
+                                        </Button>
+                                    )}
+                                    {step < TOTAL_STEPS ? (
+                                        <Button variant="primary" onClick={handleNext} disabled={loading || !general.type}>
+                                            Next <ChevronRight size={16} />
+                                        </Button>
+                                    ) : (
+                                        <Button
+                                            variant="primary"
+                                            onClick={() => submitRFQ(false)}
+                                            disabled={loading || !canSubmit}
+                                        >
+                                            <Send size={16} />
+                                            {loading ? 'Submitting...' : 'Submit for Approval'}
+                                        </Button>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Inline validation hints */}
+                            {step < TOTAL_STEPS && missing.length > 0 && feedback?.type === 'error' && (
+                                <div className="mt-3 p-3 border border-dashed" style={{ borderColor: 'var(--brand-danger)', backgroundColor: 'rgba(239,68,68,0.04)' }}>
+                                    <p className="text-xs font-semibold mb-1" style={{ color: 'var(--brand-danger)' }}>
+                                        Complete these fields before continuing:
+                                    </p>
+                                    <ul className="space-y-0.5">
+                                        {missing.map(f => (
+                                            <li key={f} className="text-xs flex items-center gap-1.5" style={{ color: 'var(--brand-danger)' }}>
+                                                <span>•</span> {f}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+                            {step === TOTAL_STEPS && step3Missing.length > 0 && (
+                                <div className="mt-3 p-3 border border-dashed" style={{ borderColor: 'var(--status-pending)', backgroundColor: 'rgba(245,158,11,0.04)' }}>
+                                    <p className="text-xs font-semibold mb-1" style={{ color: 'var(--status-pending)' }}>
+                                        Required to Submit for Approval:
+                                    </p>
+                                    <ul className="space-y-0.5">
+                                        {step3Missing.map(f => (
+                                            <li key={f} className="text-xs flex items-center gap-1.5" style={{ color: 'var(--status-pending)' }}>
+                                                <span>•</span> {f}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+                        </>
+                    );
+                })()}
 
             </div>
         </div>

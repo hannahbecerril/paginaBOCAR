@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import TableComponent from '../../components/layout/TableComponent';
 import { getUsers } from '../api';
 
+const IND_ROLES = ['Industrialization', 'Industrialization_Admin'];
+
 export default function Users() {
     const navigate = useNavigate();
     const [users, setUsers] = useState([]);
@@ -11,7 +13,8 @@ export default function Users() {
 
     useEffect(() => {
         getUsers().then(data => {
-            setUsers(data.map(user => ({
+            const filtered = data.filter(u => IND_ROLES.includes(u.role));
+            setUsers(filtered.map(user => ({
                 id: user.id,
                 name: user.name,
                 email: user.email,
@@ -28,11 +31,11 @@ export default function Users() {
     };
 
     const columns = [
-        { key: 'name', label: 'User', type: 'person_name', sortable: true, filterable: true },
-        { key: 'email', label: 'Email', type: 'file_name', sortable: true, filterable: true },
-        { key: 'role', label: 'Role', type: 'badge', sortable: true, filterable: true },
-        { key: 'lastAccess', label: 'Last Access', type: 'time', sortable: true },
-        { key: 'status', label: 'Status', type: 'status', sortable: true, filterable: true },
+        { key: 'name',       label: 'User',        type: 'person_name', sortable: true, filterable: true },
+        { key: 'email',      label: 'Email',        type: 'file_name',   sortable: true, filterable: true },
+        { key: 'role',       label: 'Role',         type: 'badge',       sortable: true, filterable: true },
+        { key: 'lastAccess', label: 'Last Access',  type: 'time',        sortable: true },
+        { key: 'status',     label: 'Status',       type: 'status',      sortable: true, filterable: true },
     ];
 
     if (loading) {
@@ -49,7 +52,7 @@ export default function Users() {
     return (
         <TableComponent
             title="User Management"
-            subtitle="Manage system users"
+            subtitle="Industrialization team members"
             data={users}
             columns={columns}
             onClickRow={handleRowClick}

@@ -1,17 +1,16 @@
 from django.db import models
-from .base import RFQ_Base, Suppliers
+from django.contrib.auth.models import User
+from .base import RFQ_Base
 
 
-# ── MOLD_COSTBR_I ───────────────────────────────────────────
+# ── MOLD_COSTBR_I ────────────────────────────────────────────
 class MOLD_COSTBR_I(models.Model):
- 
     id_rfq = models.ForeignKey(
         RFQ_Base, on_delete=models.CASCADE, related_name='mold_costbr_i_rfq'
     )
     supplier = models.ForeignKey(
-        Suppliers, on_delete=models.PROTECT, related_name='mold_costbr_i_supplier', null=True, blank=True
+        User, on_delete=models.SET_NULL, related_name='mold_costbr_i_supplier', null=True, blank=True
     )
-
 
     Part_name = models.CharField(max_length=255, blank=True)
     Alloy = models.CharField(max_length=255, blank=True)
@@ -38,7 +37,3 @@ class MOLD_COSTBR_I(models.Model):
 
     def __str__(self):
         return f'Mold Cost BR I - RFQ {self.id_rfq}'
-    
-
-
-

@@ -2,11 +2,12 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import { LogOut, User, ChevronDown, Bell, ChevronRight } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
+import Cookies from 'js-cookie';
 import Button from '../ui/Button';
 import NotisSidebar from './NotisSidebar';
 import { useNotifications } from '../../contexts/NotificationContext';
 
-function NavBar({ module, basePath, tabs = [], sections = [], user = { name: 'User' } }) {
+function NavBar({ module, basePath, tabs = [], sections = [], user = { name: 'User' }, sectionsFirst = false }) {
     const location = useLocation();
     const [showUserMenu, setShowUserMenu] = useState(false);
     const [showNotifications, setShowNotifications] = useState(false);
@@ -19,9 +20,6 @@ function NavBar({ module, basePath, tabs = [], sections = [], user = { name: 'Us
         clearAll,
         unreadCount,
         updateUserRole,
-        enabledCategories,
-        updateCategorySettings,
-        userRole
     } = useNotifications();
 
     // Update user role when route changes
@@ -78,7 +76,7 @@ function NavBar({ module, basePath, tabs = [], sections = [], user = { name: 'Us
                         <div className="flex items-center justify-start">
                             <div className="hidden sm:ml-6 sm:flex sm:space-x-1">
                                 {/* Regular Tabs */}
-                                {tabs.map((tab) => (
+                                {!sectionsFirst && tabs.map((tab) => (
                                     <NavLink
                                         key={tab.path}
                                         to={`${basePath}/${tab.path}`}
@@ -149,6 +147,23 @@ function NavBar({ module, basePath, tabs = [], sections = [], user = { name: 'Us
                                         </div>
                                     );
                                 })}
+
+                                {/* Tabs rendered after sections when sectionsFirst=true */}
+                                {sectionsFirst && tabs.map((tab) => (
+                                    <NavLink
+                                        key={tab.path}
+                                        to={`${basePath}/${tab.path}`}
+                                        className={({ isActive }) => `
+                                            px-3 py-2 text-sm font-medium transition-colors duration-fast
+                                            ${isActive
+                                                ? 'text-brand-accent border-b-2 border-brand-accent'
+                                                : 'text-text-secondary hover:text-text-primary hover:border-b-2 hover:border-border-dark'
+                                            }
+                                        `}
+                                    >
+                                        {tab.label}
+                                    </NavLink>
+                                ))}
                             </div>
                         </div>
 
@@ -203,8 +218,8 @@ function NavBar({ module, basePath, tabs = [], sections = [], user = { name: 'Us
                                             <button
                                                 onClick={() => {
                                                     localStorage.removeItem('user');
-                                                    localStorage.removeItem('access_token');
-                                                    localStorage.removeItem('refresh_token');
+                                                    Cookies.remove('access_token');
+                                                    Cookies.remove('refresh_token');
                                                     window.location.href = '/Login';
                                                 }}
                                                 className="w-full px-4 py-2 text-left text-sm transition-colors duration-fast flex items-center gap-2"
@@ -231,9 +246,6 @@ function NavBar({ module, basePath, tabs = [], sections = [], user = { name: 'Us
                 notifications={notifications}
                 onMarkAsRead={markAsRead}
                 onClearAll={clearAll}
-                onUpdateCategory={updateCategorySettings}
-                enabledCategories={enabledCategories}
-                userRole={userRole}
             />
         </>
     );

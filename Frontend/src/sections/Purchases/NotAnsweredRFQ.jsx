@@ -14,7 +14,7 @@ export default function NotAnsweredRFQ() {
             setRfqList(rfqs.map(rfq => ({
                 id: rfq.id,
                 title: rfq.title,
-                category: rfq.category,
+                category: rfq.type,
                 last_modified: rfq.lastModified
             })));
             setLoading(false);

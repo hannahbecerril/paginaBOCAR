@@ -1,6 +1,7 @@
 // contexts/NotificationContext.jsx
 import { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import { getNotifications, NOTIFICATION_CATEGORIES } from '../sections/api';
+import Cookies from 'js-cookie';
+import { getNotifications, markNotificationRead, clearNotifications, NOTIFICATION_CATEGORIES } from '../sections/api';
 
 const NotificationContext = createContext();
 
@@ -14,7 +15,6 @@ export const useNotifications = () => {
 
 export { NOTIFICATION_CATEGORIES };
 
-// Get user role based on route
 export const getUserRoleFromPath = (pathname) => {
     const lowerPath = pathname.toLowerCase();
     if (lowerPath.includes('/industrialization')) return 'industrialization';
@@ -23,14 +23,15 @@ export const getUserRoleFromPath = (pathname) => {
     return 'industrialization';
 };
 
-// Helper to attach category objects to notifications
 const attachCategoryToNotifications = (notifications) => {
     return notifications.map(notification => ({
         ...notification,
         date: new Date(notification.date),
-        category: NOTIFICATION_CATEGORIES[Object.keys(NOTIFICATION_CATEGORIES).find(
-            key => NOTIFICATION_CATEGORIES[key].id === notification.categoryId
-        )]
+        category: NOTIFICATION_CATEGORIES[
+            Object.keys(NOTIFICATION_CATEGORIES).find(
+                key => NOTIFICATION_CATEGORIES[key].id === notification.categoryId
+            )
+        ],
     }));
 };
 
@@ -38,57 +39,72 @@ export const NotificationProvider = ({ children }) => {
     const [notifications, setNotifications] = useState([]);
     const [userRole, setUserRole] = useState('industrialization');
     const [enabledCategories, setEnabledCategories] = useState(() => {
-        const saved = localStorage.getItem('notification_categories');
-        if (saved) return JSON.parse(saved);
+        try {
+            const user = JSON.parse(localStorage.getItem('user') || '{}');
+            const key = user?.id ? `notif_prefs_${user.id}` : 'notif_prefs_global';
+            const saved = localStorage.getItem(key);
+            if (saved) return JSON.parse(saved);
+        } catch { /* ignore */ }
         return Object.values(NOTIFICATION_CATEGORIES).reduce((acc, cat) => {
             acc[cat.id] = true;
             return acc;
         }, {});
     });
 
-    // Load notifications based on role
-    const loadNotificationsForRole = useCallback((role) => {
-        getNotifications(role).then(raw => {
-            setNotifications(attachCategoryToNotifications(raw));
-        });
+    const loadNotifications = useCallback(() => {
+        // Skip if not logged in — avoids auth-loop when context mounts on the Login page
+        if (!Cookies.get('access_token')) return;
+
+        getNotifications()
+            .then(raw => setNotifications(attachCategoryToNotifications(raw)))
+            .catch(() => { /* Notification failures are non-critical — silently ignore */ });
     }, []);
 
-    // Update user role when route changes
+    // Load once on mount (only after login — guarded by token check above).
+    // Subsequent refreshes happen only on full page reload (user requirement).
+    useEffect(() => {
+        loadNotifications();
+    }, []); // intentional empty deps — single load per page session
+
+    // Update user role when route changes (no re-fetch needed — backend scopes to user)
     const updateUserRole = useCallback((pathname) => {
         const newRole = getUserRoleFromPath(pathname);
-        if (newRole !== userRole) {
-            setUserRole(newRole);
-            loadNotificationsForRole(newRole);
-        }
-    }, [userRole, loadNotificationsForRole]);
+        setUserRole(newRole);
+    }, []);
 
-    // Persist category settings
     useEffect(() => {
-        localStorage.setItem('notification_categories', JSON.stringify(enabledCategories));
+        try {
+            const user = JSON.parse(localStorage.getItem('user') || '{}');
+            const key = user?.id ? `notif_prefs_${user.id}` : 'notif_prefs_global';
+            localStorage.setItem(key, JSON.stringify(enabledCategories));
+        } catch { /* ignore */ }
     }, [enabledCategories]);
 
     const markAsRead = useCallback((notificationId) => {
+        // Optimistic update
         if (notificationId === 'all') {
             setNotifications(prev => prev.map(n => ({ ...n, read: true })));
         } else {
-            setNotifications(prev => prev.map(n =>
-                n.id === notificationId ? { ...n, read: true } : n
-            ));
+            setNotifications(prev =>
+                prev.map(n => n.id === notificationId ? { ...n, read: true } : n)
+            );
         }
+        markNotificationRead(notificationId).catch(err =>
+            console.warn('markAsRead failed:', err.message)
+        );
     }, []);
 
     const clearAll = useCallback(() => {
         setNotifications([]);
+        clearNotifications().catch(err =>
+            console.warn('clearAll failed:', err.message)
+        );
     }, []);
 
     const updateCategorySettings = useCallback((categoryId, enabled) => {
-        setEnabledCategories(prev => ({
-            ...prev,
-            [categoryId]: enabled
-        }));
+        setEnabledCategories(prev => ({ ...prev, [categoryId]: enabled }));
     }, []);
 
-    // Filter notifications based on enabled categories and user role
     const filteredNotifications = notifications.filter(notification => {
         if (!notification?.category) return false;
         const { category } = notification;
@@ -106,7 +122,8 @@ export const NotificationProvider = ({ children }) => {
             updateUserRole,
             enabledCategories,
             updateCategorySettings,
-            NOTIFICATION_CATEGORIES
+            NOTIFICATION_CATEGORIES,
+            reloadNotifications: loadNotifications,
         }}>
             {children}
         </NotificationContext.Provider>

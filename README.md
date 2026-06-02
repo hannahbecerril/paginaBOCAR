@@ -89,25 +89,19 @@ Django Groups are used as roles. Six groups are defined:
 
 ---
 
-## RFQ Lifecycle (9 Levels)
+## RFQ Lifecycle
 
-Each RFQ has a `Status_RFQ` record with boolean flags `lev1`–`lev9` that drive the workflow:
+Each RFQ has a `status` CharField on `RFQ_Base` that drives the workflow. The `submitted_for_review` flag on `RFQ_Base` distinguishes "in progress" from "pending admin action" within `industrialization_draft` and `purchases_draft`.
 
-```
-lev1 (created) → lev2 (Ind. draft) → lev3 (pending Ind. Admin approval)
-                                          ↓
-                                      lev4 (Purchases draft)
-                                          ↓
-                                      lev5 (pending Purchases Admin approval)
-                                          ↓
-                                      lev6 (published to suppliers)
-                                          ↓
-                                      lev7 (quote analysis)
-                                          ↓
-                                      lev8 (pending final award)
-                                          ↓
-                                      lev9 (awarded / closed)
-```
+| Status | Who acts | Description |
+|--------|---------|-------------|
+| `industrialization_draft` | Ind. engineer + Ind_Admin | Working draft or awaiting admin review |
+| `sent_to_purchases` | Purchases team | Ind_Admin approved — in Purchases inbox |
+| `purchases_draft` | Purchases team | Assigning suppliers |
+| `sent_to_suppliers` | Supplier portal | Published to suppliers |
+| `waiting_for_suppliers` | Purchases analysis | At least one supplier responded; others can still submit |
+| `supplier_selected` | Purchases_Admin | Winner chosen, pending final award |
+| `rfq_closed` | Read-only | Final award confirmed, frozen |
 
 State transitions are timestamped in `RFQ_Tracking` and used for dashboard KPI calculations.
 
@@ -132,29 +126,32 @@ Key endpoints:
 |--------|------|-------------|
 | `POST` | `/api/auth/login/interno/` | Login for internal staff |
 | `POST` | `/api/auth/login/proveedor/` | Login for suppliers (requires HMAC-SHA256 header) |
+| `POST` | `/api/auth/token/refresh/` | Refresh an expired access token |
 | `GET` | `/api/rfqs/lista/` | List RFQs filtered by role and view type |
-| `POST` | `/rfq/crear/` | Create a new RFQ |
+| `GET` | `/api/rfqs/<pk>/` | Full RFQ detail (all three stages) |
+| `POST` | `/api/rfq/crear/` | Create a new RFQ |
 | `PUT` | `/api/rfq/<pk>/editar/` | Edit an existing RFQ |
-| `PATCH` | `/api/rfq/<pk>/revision-ind/` | Industrialization Admin: approve/reject |
-| `PUT` | `/rfq/<pk>/asignar-proveedores/` | Assign supplier candidates |
-| `PATCH` | `/api/rfq/<pk>/aprobar-proveedores/` | Purchases Admin: approve supplier list |
-| `POST` | `/api/rfq/<pk>/cotizar/` | Supplier: submit quote |
-| `GET` | `/rfq/<pk>/comparativa/` | Side-by-side quote comparison |
-| `PATCH` | `/api/rfq/<pk>/seleccionar-proveedor/` | Select winning supplier |
-| `PATCH` | `/api/rfq/<pk>/fallo-gerencial/` | Final manager award decision |
+| `PATCH` | `/api/rfqs/<pk>/revision-ind/` | Industrialization Admin: approve/reject |
+| `PUT` | `/api/rfqs/<pk>/asignar-proveedores/` | Assign supplier candidates (`is_draft` param controls submit-for-review vs save-as-draft) |
+| `PATCH` | `/api/rfqs/<pk>/aprobar-proveedores/` | Purchases Admin: approve supplier list |
+| `POST` | `/api/rfqs/<pk>/cotizar/` | Supplier: submit quote |
+| `GET` | `/api/rfqs/<pk>/comparativa/` | Side-by-side quote comparison |
+| `PATCH` | `/api/rfqs/<pk>/seleccionar-proveedor/` | Select winning supplier |
+| `PATCH` | `/api/rfqs/<pk>/fallo-gerencial/` | Final manager award decision |
 | `GET` | `/api/dashboard/industrializacion/` | Ind. team KPI dashboard |
 | `GET` | `/api/dashboard/compras/` | Purchases team KPI dashboard |
 | `GET` | `/api/dashboard/proveedor/` | Supplier workload dashboard |
-
-> Several routes are missing the `/api/` prefix — see `backend/API_ROUTES.md` Known Issues.
 
 ---
 
 ## Known Issues
 
-See [`backend/ARCHITECTURAL_RISKS.md`](backend/ARCHITECTURAL_RISKS.md) for a full list. Critical items:
+See [`backend/ARCHITECTURAL_RISKS.md`](backend/ARCHITECTURAL_RISKS.md) and [`frontend/API_RISKS.md`](frontend/API_RISKS.md) for full details.
 
-- **Server will not start**: `RFQAprobadosListView` is imported in `core/urls.py` but not defined in `views.py`.
-- **Supplier assignment is broken**: `ProveedorListView` returns Django User IDs but the assignment view queries a separate `Suppliers` table with independent IDs.
-- **`FalloFinalGerencialView` crashes** on the "aprobar" path with `AttributeError` (references a non-existent `winning_supplier` field).
-- **Industrialization KPI always returns 0**: `ReviewRFQIndView` never writes to `RFQ_Tracking`.
+Open items as of 2026-06-02:
+
+- **No test coverage**: `api/tests.py` is empty. No automated tests for business logic, state machine transitions, or permission checks.
+- **`completionPercentage` always 0 in RFQ detail page**: `normalizeRFQDetail` hardcodes 0. `RFQDetailView` does not include `completion_percentage`. Fix: call `getRFQProgress(id)` inside the detail view or client-side in `RFQDetails.jsx`.
+- **Notifications never emitted**: The `Notificacion` table is always empty — no state transition creates notification records.
+- **Supplier PATCH/DELETE requires only `IsPurchasesUser`**: Any Purchases user can delete a supplier. Should require `IsPurchasesAdmin`.
+- **`EditarRFQView` missing backend guard for `sent_to_purchases`**: `submitRFQForReview` could accidentally re-draft an RFQ already in Purchases. Guarded client-side in ActionBar only.
