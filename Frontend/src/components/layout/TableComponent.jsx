@@ -208,6 +208,12 @@ export default function TableComponent({
                     'waiting_for_suppliers':   { color: 'var(--status-pending)',      backgroundColor: 'rgba(245, 158, 11, 0.1)',         borderColor: 'var(--status-pending)' },
                     'supplier_selected':       { color: 'var(--status-completed)',    backgroundColor: 'rgba(59, 130, 246, 0.1)',         borderColor: 'var(--status-completed)' },
                     'rfq_closed':              { color: 'var(--status-cancelled)',    backgroundColor: 'rgba(239, 68, 68, 0.1)',          borderColor: 'var(--status-cancelled)' },
+                    
+                    // Custom Supplier Statuses
+                    'This RFQ has been selected': { color: 'var(--status-completed)', backgroundColor: 'rgba(59, 130, 246, 0.1)',         borderColor: 'var(--status-completed)' },
+                    'Waiting for response':       { color: 'var(--status-pending)',   backgroundColor: 'rgba(245, 158, 11, 0.1)',         borderColor: 'var(--status-pending)' },
+                    'Pending':                    { color: 'var(--text-tertiary)',    backgroundColor: 'var(--surface-disabled)',         borderColor: 'var(--border-default)' },
+                    'Not Selected':               { color: 'var(--status-cancelled)', backgroundColor: 'rgba(239, 68, 68, 0.1)',          borderColor: 'var(--status-cancelled)' },
                 };
                 const rfqStatusStyle = rfqStatusStyles[value] || { color: 'var(--text-secondary)', backgroundColor: 'var(--surface-hover)', borderColor: 'var(--border-default)' };
                 // Display human-readable label; fall back to raw value if unknown

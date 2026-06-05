@@ -1,8 +1,9 @@
 // components/layout/Calendar.jsx
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Calendar as CalIcon, Clock, Tag, CheckCircle, AlertCircle, Wifi } from 'lucide-react';
+import { getIndustrializationAllRFQs, getPurchasesAllRFQs, getSuppliersAllRFQs } from '../../sections/api';
 
-// ── Event generation per role ──────────────────────────────────────────────────
+// ── Event generation ──────────────────────────────────────────────────
 
 const TODAY = new Date();
 const y = TODAY.getFullYear();

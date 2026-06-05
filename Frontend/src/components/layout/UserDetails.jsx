@@ -187,6 +187,11 @@ export default function UserDetails() {
                     payload.rol = formData.rol;
                 }
 
+                // Include new password only if filled in
+                if (formData.password && formData.password.trim()) {
+                    payload.password = formData.password;
+                }
+
                 const updated = isSupplierContext
                     ? await updateSupplier(id, payload)
                     : await updateUser(id, payload);
@@ -337,14 +342,14 @@ export default function UserDetails() {
                                     )}
                                 </div>
 
-                                {/* Password — only shown when creating */}
-                                {isCreating && (
+                                {/* Password — required when creating, optional when editing */}
+                                {isEditing && (
                                     <div>
                                         <label className="text-xs uppercase tracking-wider block" style={{ color: 'var(--text-tertiary)' }}>
-                                            Password <span style={{ color: 'var(--brand-danger)' }}>*</span>
+                                            {isCreating ? <>Password <span style={{ color: 'var(--brand-danger)' }}>*</span></> : 'New Password (leave blank to keep current)'}
                                         </label>
                                         <input type="password" value={formData.password || ''} onChange={(e) => handleInputChange('password', e.target.value)}
-                                            placeholder="Set initial password"
+                                            placeholder={isCreating ? 'Set initial password' : 'Enter new password to change it'}
                                             className="w-full mt-1 px-3 py-1.5 text-sm border border-border-default focus:outline-none focus:ring-2 focus:ring-ring bg-surface"
                                             style={{ color: 'var(--text-primary)' }} />
                                     </div>
@@ -444,11 +449,9 @@ export default function UserDetails() {
                     {!isEditing && !isCreating && (
                         <Card title="Quick Actions">
                             <div className="flex flex-wrap gap-3">
-                                {!isSupplierContext && (
-                                    <Button variant="outline" size="sm" onClick={handleResetPassword}>
-                                        <Key size={14} /> Reset Password
-                                    </Button>
-                                )}
+                                <Button variant="outline" size="sm" onClick={handleEdit}>
+                                    <Key size={14} /> Change Password
+                                </Button>
                                 <Button variant="danger" size="sm" onClick={handleDelete}>
                                     <Trash2 size={14} /> Delete {isSupplierContext ? 'Supplier' : 'User'}
                                 </Button>

@@ -65,7 +65,7 @@ Supplier-level display (derived from `RFQ_Assignment`, injected by `normalizeRFQ
 
 | Display in frontend | Condition |
 |---------------------|-----------|
-| Quote form visible | `status` is `sent_to_suppliers` or `waiting_for_suppliers` |
+| Quote form visible | `status` is `sent_to_suppliers` or `waiting_for_suppliers`. `stage3` is now returned by the backend for Supplier role from `sent_to_suppliers` onwards, so `QuoteForm` renders immediately even for the first responder. |
 | `is_winner: true` | `status === supplier_selected` and this supplier won |
 | `is_winner: false` | `status === supplier_selected` and this supplier lost |
 
@@ -264,7 +264,11 @@ Returns assigned RFQs in `sent_to_suppliers` / `waiting_for_suppliers` where `ha
 }
 ```
 
-`stage2` is `null` for Supplier role. `stage3` is `null` until `waiting_for_suppliers`.
+`stage2` is `null` for Supplier role.
+
+`stage3` visibility:
+- **Supplier role:** returned from `sent_to_suppliers` onwards; contains only that supplier's own response (or empty array if they haven't saved yet).
+- **Internal roles:** returned from `waiting_for_suppliers` onwards; contains all suppliers' responses.
 
 ---
 
@@ -316,10 +320,12 @@ After `sendToSuppliers()` completes (Purchases_Admin approves supplier list from
 
 ### POST `/api/rfq/crear/`
 
-**Caller:** `Industrialization/CreateRFQ.jsx` — `submitRFQ(isDraft)` function
+**Caller:** `Industrialization/CreateRFQ.jsx` — calls `createRFQ(payload)` from `api.js`
 **Already wired to real backend.**
 
 **Trigger:** "Save as Draft" (step ≥ 2) or "Submit for Approval" (step 3, all fields valid)
+
+> **Auth fix:** `createRFQ()` uses `apiFetch()` which includes automatic 401 token-refresh. The previous raw `fetch()` implementation would fail with a 401 if the token expired while the user was filling the multi-step form.
 
 **Request body — Die type:**
 ```json
@@ -401,7 +407,7 @@ These actions happen inside `RFQDetails.jsx` stage3 section, visible when `userR
 ### POST `/api/rfqs/{id}/cotizar/`
 
 **Caller:** `Suppliers/QuoteForm.jsx` — `submitQuote(rfqId, data)`
-**Trigger:** Supplier fills out the tabbed quote form and clicks "Submit Quote" or "Save Draft"
+**Trigger:** Supplier fills out the tabbed quote form and clicks "Save Draft" or "Submit Final Quote"
 
 **Request body — Mold:**
 ```json
@@ -419,12 +425,14 @@ These actions happen inside `RFQDetails.jsx` stage3 section, visible when `userR
 ```json
 {
   "is_draft": false,
-  "die_cost_p1": { "Elaborated_by": "supplier_user", "Country": "MX" },
-  "die_cost_p2": {},
+  "die_cost_p1": { "Company": "SupplierCo", "Country": "MX", "Base_currency": "USD", "Exchange_rate": "17.5" },
+  "die_cost_p2": { "Mill_H": 120, "Mill_PriceH": 45.0 },
   "die_cost_p3": {},
   "die_cost_p4": {}
 }
 ```
+
+> **Do NOT send** `Elaborated_by`, `Last_change`, `id`, `id_rfq_id`, or `supplier_id` — the backend strips these. `Elaborated_by` is set server-side from the JWT. Sending them caused 500 errors on re-submission after a draft reload.
 
 **`is_draft` behavior:**
 - `true` → saves data, RFQ status unchanged
@@ -432,7 +440,10 @@ These actions happen inside `RFQDetails.jsx` stage3 section, visible when `userR
 
 **Expected response:** `{ "message": "..." }`
 
-**Frontend flow:** On success, `QuoteForm` shows a confirmation message. The form pre-populates on re-entry from `stage3.responses[0].p1..p5` in the detail response.
+**Frontend flow:**
+- `QuoteForm` initialises from `stage3.responses[0].p1..p5`. `cleanSeed()` strips all DB-internal keys before seeding `formData` so they are never sent back.
+- "Submit Final Quote" button is **hidden** (not just disabled) until `formData.p1.Company` and `formData.p1.Country` are non-empty. "Save Draft" is always visible.
+- On successful Final Quote (`is_draft=false`), `onSubmitSuccess` navigates to `/Suppliers/All-RFQ` where the RFQ now appears under `waiting_for_suppliers`.
 
 ---
 
@@ -534,13 +545,16 @@ Valid `rol` values: `SuperAdmin`, `Industrialization`, `Industrialization_Admin`
 **Caller:** `UserDetails.jsx` — `handleSave()` when editing an existing user
 **Trigger:** Edit User → modify fields → Save Changes
 
-**Request body:** Partial update — accepted fields: `email`, `first_name`, `last_name`, `rol` (exact Group name), `is_active` (boolean):
+**Request body:** Partial update — accepted fields: `email`, `first_name`, `last_name`, `rol` (exact Group name), `is_active` (boolean), `password` (plain text, only sent when the field is filled):
 ```json
 {
   "rol": "Industrialization_Admin",
-  "is_active": false
+  "is_active": false,
+  "password": "NewSecurePass1!"
 }
 ```
+
+Password is optional in edit mode — omit it to leave the password unchanged. When provided, the backend calls `set_password()` which hashes it correctly.
 
 ---
 
@@ -594,6 +608,8 @@ Valid `rol` values: `SuperAdmin`, `Industrialization`, `Industrialization_Admin`
 
 **api.js function:** `updateSupplier(id, data)`
 **Caller:** `UserDetails.jsx` — edit + save on an existing supplier profile
+
+**Accepted fields:** `email`, `first_name`, `last_name`, `username`, `is_active`, `password` (optional, same behavior as internal users).
 
 ---
 
@@ -793,6 +809,7 @@ All functions below are **already wired** to real endpoints in `api.js`. IDs are
 | `getDashboardData(range)` | `GET /api/dashboard/industrializacion/?range={range}` | Returns `{ statusChange, rfqDistribution, kpis }` |
 | `getPurchasesDashboardData(range)` | `GET /api/dashboard/compras/?range={range}` | Same shape |
 | `getSupplierDashboardData()` | `GET /api/dashboard/proveedor/` | |
+| `createRFQ(payload)` | `POST /api/rfq/crear/` | Uses `apiFetch()` — includes 401 auto-refresh |
 | `submitRFQForReview(id, type, tool)` | `PUT /api/rfq/{id}/editar/` `{is_draft:false}` | |
 | `approveRFQInd(id, bool)` | `PATCH /api/rfqs/{id}/revision-ind/` | |
 | `assignSuppliers(id, ids[], isDraft=false)` | `PUT /api/rfqs/{id}/asignar-proveedores/` | `isDraft=true` → save draft; `isDraft=false` → submit for review |

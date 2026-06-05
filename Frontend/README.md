@@ -116,27 +116,35 @@ Frontend/
 │   │   │   ├── NavBar.jsx           # Top nav with notifications bell + user menu;
 │   │   │   │                        # accepts sectionsFirst prop (Purchases puts dropdown first)
 │   │   │   ├── RFQDetails.jsx       # Shared detail view (stage1/2/3 + ActionBar);
-│   │   │   │                        # stage2 edit has inline supplier picker (search + add/remove)
+│   │   │   │                        # stage2 edit has inline supplier picker (search + add/remove);
+│   │   │   │                        # CUST/ELAB fields hidden for supplier role;
+│   │   │   │                        # after Final Quote → navigates to /Suppliers/All-RFQ
 │   │   │   ├── UserDetails.jsx      # Create/edit/delete user or supplier;
+│   │   │   │                        # password field shown in edit mode for both users and suppliers;
 │   │   │   │                        # includes NotificationPreferencesCard
 │   │   │   ├── NotisSidebar.jsx     # Notification drawer (no settings gear / NotificationConfig)
 │   │   │   ├── TableComponent.jsx   # Generic sortable/filterable table;
 │   │   │   │                        # category column shows rfq.type ("mold"/"die")
 │   │   │   ├── Calendar.jsx         # Simulated calendar (Month/Week/Day/Agenda); role-aware events
 │   │   │   └── Chatbot.jsx          # Simulated AI procurement assistant; role-aware quick prompts
-│   │   └── ui/                      # Button, Card, Input, Badge, UploadCard, etc.
+│   │   └── ui/
+│   │       ├── UploadCard.jsx       # Drag-drop file upload; fixed stale-closure bug in simulateUpload
+│   │       └── Button, Card, Input, Badge, …
 │   ├── sections/
 │   │   ├── api.js                   # All backend API calls (single source of truth);
-│   │   │                            # assignSuppliers(rfqId, ids, isDraft=false)
+│   │   │                            # createRFQ(), assignSuppliers(rfqId, ids, isDraft=false)
+│   │   │                            # apiFetch() handles 401 auto-refresh on all calls
 │   │   ├── Login/
 │   │   ├── Industrialization/       # AllRFQ, Drafts, CreateRFQ, Dashboard, Users
 │   │   │                            # Users tab/route hidden for non-admin users
 │   │   │                            # Drafts: admin users see inline Send/Discard actions
-│   │   │                            # CreateRFQ: shows ALL missing fields at once + uploads files on submit
+│   │   │                            # CreateRFQ: uses createRFQ() (token auto-refresh); uploads files on submit
 │   │   ├── Purchases/               # AllRFQ, Drafts, NotAnsweredRFQ, Dashboard, SuppliersList, Users
 │   │   │                            # Suppliers/Users tabs hidden for non-admin; sectionsFirst=true in NavBar
 │   │   │                            # Drafts: admin users see inline Send to Suppliers / Discard actions
 │   │   └── Suppliers/               # AllRFQ, Drafts, NotAnsweredRFQ, QuoteForm
+│   │       └── QuoteForm.jsx        # Tabbed cost-breakdown form; cleanSeed() strips DB keys on load;
+│   │                                # Submit Final Quote hidden until Company+Country (P1) are filled
 │   └── App.jsx                      # Router + role-based redirect + ProtectedRoute
 ├── .env.development                 # VITE_API_BASE_URL + VITE_PROVEEDOR_HMAC_KEY
 ├── .env.production                  # Production overrides (set real values before deploy)

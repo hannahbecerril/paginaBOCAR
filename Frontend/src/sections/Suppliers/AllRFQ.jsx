@@ -14,8 +14,7 @@ export default function AllRFQ() {
             setRfqList(rfqs.map(rfq => ({
                 id: rfq.id,
                 title: rfq.title,
-                category: rfq.type,
-                priority: rfq.priority,
+                deadline: rfq.response_deadline || '—',
                 status: rfq.status,
                 last_modified: rfq.lastModified
             })));
@@ -26,8 +25,7 @@ export default function AllRFQ() {
     const columns = [
         { key: 'id', label: 'ID', type: 'id', sortable: true, filterable: true },
         { key: 'title', label: 'RFQ', type: 'file_name', sortable: true, filterable: true },
-        { key: 'category', label: 'Category', type: 'badge', sortable: true, filterable: true },
-        { key: 'priority', label: 'Priority', type: 'priority', sortable: true, filterable: true },
+        { key: 'deadline', label: 'Deadline', type: 'text', sortable: true, filterable: true },
         { key: 'status', label: 'Status', type: 'rfq-status', sortable: true, filterable: true },
         { key: 'last_modified', label: 'Last Time Modified', type: 'time', sortable: true, filterable: true },
     ];

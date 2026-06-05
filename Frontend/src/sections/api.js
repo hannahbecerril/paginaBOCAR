@@ -102,7 +102,7 @@ function normalizeRFQ(r) {
         type: r.type ?? '',
         category: r.category ?? '',
         priority: r.priority ?? '',
-        status: r.status ?? '',
+        status: r.supplier_status ?? r.status ?? '',
         submitted_for_review: r.submitted_for_review ?? false,
         lastModified: r.modified_date ? r.modified_date.split('T')[0] : null,
         createdBy: r.created_by ?? '',
@@ -131,7 +131,7 @@ function normalizeRFQDetail(r) {
         type: r.type ?? '',
         category: r.category ?? '',
         priority: r.priority ?? '',
-        status: r.status ?? '',
+        status: r.supplier_status ?? r.status ?? '',
         submitted_for_review: r.submitted_for_review ?? false,
         lastModified: r.modified_date ? r.modified_date.split('T')[0] : null,
         createdBy: r.created_by ?? '',
@@ -312,6 +312,13 @@ export async function savePurchasesMetadata(rfqId, metadata) {
 
 export async function getRFQProgress(rfqId) {
     return apiFetch(`/api/rfqs/${rfqId}/progreso/`);
+}
+
+export async function createRFQ(payload) {
+    return apiFetch('/api/rfq/crear/', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+    });
 }
 
 export async function submitRFQForReview(rfqId, type, tool) {

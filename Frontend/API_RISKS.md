@@ -3,7 +3,7 @@
 **Compared sources:**
 - Backend: `backend/core/urls.py` · `backend/api/views.py` · `backend/api/serializers.py`
 - Frontend: `Frontend/src/sections/api.js` · `Frontend/src/components/layout/RFQDetails.jsx` · `Frontend/src/sections/Industrialization/CreateRFQ.jsx`
-- **Last full audit: 2026-06-02**
+- **Last full audit: 2026-06-04**
 
 **Severity:**
 - 🔴 Critical — broken right now, blocks users
@@ -33,8 +33,8 @@
 | `GET /api/rfqs/lista/?vista=draft` (Ind token) | same | ✅ | Returns **all** `industrialization_draft` RFQs (no creator filter since recent backend change) |
 | `GET /api/rfqs/lista/?vista=all` (Purchases token) | same | ✅ | Returns `sent_to_suppliers` and beyond |
 | `GET /api/rfqs/lista/?vista=draft` (Purchases token) | same | ✅ | Returns `sent_to_purchases` + `purchases_draft`; frontend filters client-side for inbox vs drafts tab |
-| `GET /api/rfqs/lista/?vista=all` (Supplier token) | same | ✅ | Returns assigned RFQs in `waiting_for_suppliers`, `supplier_selected`, `rfq_closed` |
-| `GET /api/rfqs/lista/?vista=draft` (Supplier token) | same | ✅ | Returns unresponded assigned RFQs |
+| `GET /api/rfqs/lista/?vista=all` (Supplier token) | same | ✅ | Returns assigned RFQs in `waiting_for_suppliers`, `supplier_selected`, `rfq_closed`. After submitting a Final Quote the RFQ advances to `waiting_for_suppliers` and becomes visible here. |
+| `GET /api/rfqs/lista/?vista=draft` (Supplier token) | same | ✅ | Returns unresponded assigned RFQs in `sent_to_suppliers` / `waiting_for_suppliers` |
 
 **Response shape match:**
 Each item returned from the backend is normalized by `normalizeRFQ()` in `api.js`:
@@ -80,8 +80,9 @@ Each item returned from the backend is normalized by `normalizeRFQ()` in `api.js
 | `stage1.p1` or `stage1.die_trim` | `stage1.data.specifications` | ✅ |
 | `stage1.p2` | `stage1.data.moldP2` | ✅ |
 | `stage2.suppliers[]` | `stage2.data.suppliers[]` | ✅ Username mapped to `name` |
-| `stage3.responses[]` (with `p1`–`p5`) | `stage3.data.responses[]` | ✅ Parts preserved as `p1`–`p5` |
-| `stage3.statistics` | `stage3.data.statistics` | ✅ |
+| `stage3.responses[]` (with `p1`–`p5`) | `stage3.data.responses[]` | ✅ Parts preserved as `p1`–`p5`. For Supplier role, only that supplier's own response is included. |
+| `stage3.statistics` | `stage3.data.statistics` | ✅ `responsesReceived` uses `has_responded=True` count |
+| `stage3` now visible to Supplier from `sent_to_suppliers` | `RFQDetailView` | ✅ Fixed — was null until `waiting_for_suppliers`; `QuoteForm` was never visible for first responder |
 | `description` field | *(not in model)* | 🔵 Minor — `RFQ_Base` has no description column. Detail card omitted from UI |
 | `createdAt` field | *(not in model)* | 🔵 Minor — only `modified_date` is tracked. Header shows `lastModified` |
 | `stage1.approvedBy` | *(not returned)* | 🔵 Low — no approval metadata tracked. Approval banner hidden |
@@ -124,10 +125,12 @@ Each item returned from the backend is normalized by `normalizeRFQ()` in `api.js
 
 | Frontend call | Backend endpoint | Status | Notes |
 |---|---|---|---|
-| `POST /api/rfq/crear/` (direct fetch in `CreateRFQ.jsx`, not via api.js) | `CrearRFQView` | ✅ | Uses `VITE_API_BASE_URL` env var; sends mold/die payload correctly |
+| `createRFQ(payload)` → `POST /api/rfq/crear/` (via `api.js`) | `CrearRFQView` | ✅ | Uses `apiFetch()` — includes automatic 401 token refresh. Previously used raw `fetch()` which caused 401 errors when the token expired mid-form. |
 | `POST /api/rfqs/{id}/documentos/` via `uploadDocument()` | `RFQDocumentListView.post` | ✅ | Called for each selected file after RFQ creation using `id_rfq` from creation response |
 
 **Validation improvement:** `CreateRFQ.jsx` now validates all required step-2 fields at once and shows every missing field in a red dashed panel below the navigation buttons (not just the first failure). Step 3 shows an amber panel listing all remaining blockers for "Submit for Approval".
+
+**Upload detection fix:** `UploadCard.jsx` previously had a stale closure bug in `simulateUpload` — it read from an empty `files` state array, so `onFileUpload` was never called and `CreateRFQ.jsx` never knew a file was selected (`canSubmit` was always false). Fixed by passing the raw `File` object directly to `simulateUpload` instead of reading from state.
 
 ---
 
@@ -148,7 +151,16 @@ Each item returned from the backend is normalized by `normalizeRFQ()` in `api.js
 |---|---|---|---|
 | `submitQuote(rfqId, { is_draft, mold_cost_p1..p5 })` | `CotizacionProveedorView` (POST) | ✅ | `QuoteForm.jsx` 5-tab mold form |
 | `submitQuote(rfqId, { is_draft, die_cost_p1..p4 })` | same | ✅ | `QuoteForm.jsx` 4-tab die form |
-| Pre-fill from `stage3.responses[0].p1..p5` | `RFQDetailView` stage3 data | ✅ | Form pre-populates on re-entry |
+| Pre-fill from `stage3.responses[0].p1..p5` | `RFQDetailView` stage3 data | ✅ | `cleanSeed()` strips DB-internal keys (`id`, `id_rfq_id`, `Last_change`, `Elaborated_by`, etc.) before seeding `formData` — prevents 500 on re-submission |
+
+**Die quote 500 fixes:**
+- `Last_change` (DateField in `DIE_COSTBR_P1_S`) was NOT NULL without a default — made nullable via migration 0013.
+- `_clean_cost()` helper in `CotizacionProveedorView` now strips all DB/metadata keys and converts `null → 0` for numeric fields, preventing NOT NULL constraint errors on FloatFields across all four die cost blocks.
+- `Elaborated_by` is always set server-side from the authenticated user — the frontend cannot spoof it.
+
+**Submit Final Quote visibility:** The button is now **hidden** (not just disabled) until `formData.p1.Company` and `formData.p1.Country` are non-empty. A hint text appears when fields are missing.
+
+**Post-quote navigation:** On successful Final Quote submission, `onSubmitSuccess` navigates to `/Suppliers/All-RFQ` where the RFQ appears in the updated `waiting_for_suppliers` status.
 
 ---
 
@@ -159,7 +171,7 @@ Each item returned from the backend is normalized by `normalizeRFQ()` in `api.js
 | `GET /api/usuarios/listar/` | `ListarUsuariosView` | `IsInternalUser` | ✅ | Excludes Supplier group. Returns `UsuarioReadSerializer` |
 | `GET /api/usuarios/{id}/` | `UsuarioDetailView.get` | `IsInternalUser` | ✅ | |
 | `POST /api/usuarios/crear/` | `CrearUsuarioView` | `IsSuperAdmin` | ✅ | Requires `username`, `password`, `email`, `rol` |
-| `PATCH /api/usuarios/{id}/` | `UsuarioDetailView.patch` | `IsSuperAdmin` | ✅ | Accepts `email`, `first_name`, `last_name`, `rol`, `is_active` |
+| `PATCH /api/usuarios/{id}/` | `UsuarioDetailView.patch` | `IsSuperAdmin` | ✅ | Accepts `email`, `first_name`, `last_name`, `rol`, `is_active`, `password` (calls `set_password()`) |
 | `DELETE /api/usuarios/{id}/` | `UsuarioDetailView.delete` | `IsSuperAdmin` | ✅ | |
 | `POST /api/usuarios/{id}/reset-password/` | `ResetPasswordView` | `IsSuperAdmin` | ✅ | Placeholder — logs intent, no email sent |
 
@@ -189,7 +201,7 @@ Each item returned from the backend is normalized by `normalizeRFQ()` in `api.js
 | `GET /api/proveedores/` | `ProveedorListCreateView.get` | `IsPurchasesUser` | ✅ | |
 | `GET /api/proveedores/{id}/` | `ProveedorDetailView.get` | `IsPurchasesUser` | ✅ | |
 | `POST /api/proveedores/` | `ProveedorListCreateView.post` | `IsSuperAdmin` | ✅ | Forces `rol: 'Supplier'` |
-| `PATCH /api/proveedores/{id}/` | `ProveedorDetailView.patch` | `IsPurchasesUser` | ✅ | |
+| `PATCH /api/proveedores/{id}/` | `ProveedorDetailView.patch` | `IsPurchasesUser` | ✅ | Accepts `email`, `first_name`, `last_name`, `username`, `is_active`, `password` (calls `set_password()`) |
 | `DELETE /api/proveedores/{id}/` | `ProveedorDetailView.delete` | `IsPurchasesUser` | ✅ | |
 
 **Note:** PATCH and DELETE require only `IsPurchasesUser` — any Purchases user can delete suppliers. Consider raising to `IsPurchasesAdmin`.

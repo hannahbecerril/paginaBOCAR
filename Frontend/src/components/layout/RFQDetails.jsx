@@ -8,7 +8,7 @@ import {
     getRFQById, saveSpecifications, savePurchasesMetadata,
     submitRFQForReview, approveRFQInd,
     assignSuppliers, approveSupplierList, selectWinner, finalManagerDecision,
-    downloadDocument, uploadDocument, getSuppliers,
+    downloadDocument, uploadDocument, getSuppliers, submitQuote,
 } from '../../sections/api';
 import UploadCard from '../ui/UploadCard';
 import QuoteForm from '../../sections/Suppliers/QuoteForm';
@@ -132,7 +132,11 @@ export default function RFQDetails() {
         } else if (section === 'stage2') {
             const currentIds = (rfqData.stage2?.data?.suppliers ?? []).map(s => s.id).filter(Boolean);
             setEditData({
-                metadata: { ...(rfqData.stage2?.data?.metadata ?? {}) },
+                metadata: {
+                    response_deadline: rfqData.response_deadline ?? '',
+                    shipping_terms: rfqData.shipping_terms ?? '',
+                    quality_requirements: rfqData.quality_requirements ?? '',
+                },
                 supplierIds: currentIds,
             });
             // Load available suppliers for the picker
@@ -468,7 +472,9 @@ export default function RFQDetails() {
                                     </div>
                                 ) : (
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                                        {Object.entries(rfqData.stage1.data.specifications ?? {}).map(([key, value]) => (
+                                        {Object.entries(rfqData.stage1.data.specifications ?? {})
+                                            .filter(([key]) => !(userRole === 'suppliers' && ['CUST', 'ELAB'].includes(key)))
+                                            .map(([key, value]) => (
                                             <div key={key} className="p-3 border border-border-default">
                                                 <label className="text-xs block" style={{ color: 'var(--text-tertiary)' }}>{key}</label>
                                                 <p className="text-sm mt-1 font-medium" style={{ color: 'var(--text-primary)' }}>{String(value ?? '—')}</p>
@@ -581,7 +587,7 @@ export default function RFQDetails() {
                                     <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>Suppliers List</h3>
                                     {canEditSection('stage2') && editingSection !== 'stage2' && (
                                         <button onClick={() => startEditing('stage2')} className="text-xs flex items-center gap-1" style={{ color: 'var(--brand-accent)' }}>
-                                            <Edit size={12} /> Edit Metadata
+                                            <Edit size={12} /> Edit
                                         </button>
                                     )}
                                 </div>
@@ -616,15 +622,17 @@ export default function RFQDetails() {
                                 {editingSection === 'stage2' ? (
                                     <div className="space-y-4">
                                         {/* Metadata fields */}
-                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                             {Object.entries(editData.metadata || {}).map(([k, v]) => (
                                                 <div key={k} className="p-2 border border-border-default">
-                                                    <label className="text-xs block" style={{ color: 'var(--text-tertiary)' }}>{k.replace(/([A-Z])/g, ' $1').trim()}</label>
+                                                    <label className="text-xs block mb-1 capitalize" style={{ color: 'var(--text-tertiary)' }}>
+                                                        {k.replace(/_/g, ' ')}
+                                                    </label>
                                                     <input
-                                                        type="text"
+                                                        type={k === 'response_deadline' ? 'date' : 'text'}
                                                         value={v ?? ''}
                                                         onChange={(e) => updateMetadata(k, e.target.value)}
-                                                        className="w-full mt-1 px-2 py-1 text-sm border border-border-default focus:outline-none focus:ring-1 focus:ring-brand-accent bg-surface"
+                                                        className="w-full px-2 py-1.5 text-sm border border-border-default focus:outline-none focus:ring-1 focus:ring-brand-accent bg-surface"
                                                         style={{ color: 'var(--text-primary)' }}
                                                     />
                                                 </div>
@@ -749,7 +757,7 @@ export default function RFQDetails() {
                                     rfqId={rfqData.id}
                                     rfqType={rfqData.type}
                                     existingResponses={rfqData.stage3.data.responses}
-                                    onSubmitSuccess={() => reloadRFQ()}
+                                    onSubmitSuccess={() => navigate('/Suppliers/All-RFQ')}
                                 />
                             )}
 
@@ -757,7 +765,7 @@ export default function RFQDetails() {
                             {userRole !== 'suppliers' && (
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                                     {rfqData.stage3.data.responses.map((response) => (
-                                        <div key={response.id} className={`border-2 p-4 ${selectedResponse?.id === response.id ? 'border-brand-accent' : 'border-border-default'}`}>
+                                        <div key={response.supplier} className={`border-2 p-4 ${selectedResponse?.supplier === response.supplier ? 'border-brand-accent' : 'border-border-default'}`}>
                                             <div className="flex justify-between items-start mb-3">
                                                 <h4 className="font-semibold">{response.supplier}</h4>
                                                 <div className="flex gap-2">
@@ -775,20 +783,38 @@ export default function RFQDetails() {
                                                     <div className="flex justify-between"><span>Delivery:</span>{response.deliveryTime}</div>
                                                 )}
                                             </div>
-                                            <button onClick={() => setSelectedResponse(selectedResponse?.id === response.id ? null : response)} className="w-full py-2 text-sm" style={{ backgroundColor: 'var(--surface-hover)' }}>
-                                                {selectedResponse?.id === response.id ? 'Hide Details' : 'View Details'}
+                                            <button onClick={() => setSelectedResponse(selectedResponse?.supplier === response.supplier ? null : response)} className="w-full py-2 text-sm" style={{ backgroundColor: 'var(--surface-hover)' }}>
+                                                {selectedResponse?.supplier === response.supplier ? 'Hide Details' : 'View Details'}
                                             </button>
 
-                                            {selectedResponse?.id === response.id && response.p1 && Object.keys(response.p1).length > 0 && (
-                                                <div className="mt-4 pt-3 border-t">
-                                                    <h5 className="text-sm font-semibold mb-2">Cost Breakdown (Part 1)</h5>
-                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-                                                        {Object.entries(response.p1).filter(([k]) => !['id', 'id_rfq_id'].includes(k)).map(([k, v]) => (
-                                                            <div key={k}><label className="text-xs block" style={{ color: 'var(--text-tertiary)' }}>{k}</label><p>{String(v ?? 'N/A')}</p></div>
-                                                        ))}
+                                            {selectedResponse?.supplier === response.supplier && (
+                                                <div className="mt-4 pt-4 border-t">
+                                                    <h5 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                                                        <DollarSign size={16} style={{ color: 'var(--brand-accent)' }} /> 
+                                                        Quote Summary
+                                                    </h5>
+                                                    <div className="bg-surface rounded-md border p-3">
+                                                        <div className="grid grid-cols-2 gap-y-3 gap-x-4 text-sm">
+                                                            {rfqData.type === 'mold' ? (
+                                                                <>
+                                                                    <div><span className="text-xs text-text-tertiary block">Material Cost</span><span className="font-medium">${Number((response.info1 || {}).MatCst_M1_PrBd || 0).toLocaleString()}</span></div>
+                                                                    <div><span className="text-xs text-text-tertiary block">Manufacturing Cost</span><span className="font-medium">${Number((response.info1 || {}).ManCst_M1_PrBd || 0).toLocaleString()}</span></div>
+                                                                    <div><span className="text-xs text-text-tertiary block">Logistics Cost</span><span className="font-medium">${Number((response.info1 || {}).LogCst_M1_PrBd || 0).toLocaleString()}</span></div>
+                                                                    <div className="col-span-2 pt-2 mt-1 border-t"><span className="text-xs text-text-tertiary block">GRAND TOTAL</span><span className="text-lg font-bold" style={{ color: 'var(--brand-accent)' }}>${Number((response.info1 || {}).GrTot_M1_PrBd || 0).toLocaleString()}</span></div>
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <div><span className="text-xs text-text-tertiary block">Material Cost</span><span className="font-medium">${Number((response.info1 || {}).MatCst_TD1_PrBd || 0).toLocaleString()}</span></div>
+                                                                    <div><span className="text-xs text-text-tertiary block">Manufacturing Cost</span><span className="font-medium">${Number((response.info1 || {}).ManuCst_TD1_PrBd || 0).toLocaleString()}</span></div>
+                                                                    <div><span className="text-xs text-text-tertiary block">Logistics Cost</span><span className="font-medium">${Number((response.info1 || {}).Logis_TD1_PrBd || 0).toLocaleString()}</span></div>
+                                                                    <div className="col-span-2 pt-2 mt-1 border-t"><span className="text-xs text-text-tertiary block">GRAND TOTAL</span><span className="text-lg font-bold" style={{ color: 'var(--brand-accent)' }}>${Number((response.info1 || {}).GrTotal_TD1_PrBd || 0).toLocaleString()}</span></div>
+                                                                </>
+                                                            )}
+                                                        </div>
                                                     </div>
+                                                    
                                                     {userRole === 'purchases' && rfqData.status === STATUS.WAITING_FOR_SUPPLIERS && (
-                                                        <div className="flex gap-2 mt-3">
+                                                        <div className="flex gap-2 mt-4">
                                                             <Button size="sm" disabled={actionLoading}
                                                                 onClick={() => {
                                                                     const supplierId = rfqData.stage2?.data?.suppliers?.find(
@@ -797,7 +823,8 @@ export default function RFQDetails() {
                                                                     if (!supplierId) { setActionError('Cannot identify supplier ID.'); return; }
                                                                     runAction(selectWinner, rfqData.id, supplierId);
                                                                 }}>
-                                                                Select as Winner
+                                                                <CheckCircle size={16} className="mr-2" />
+                                                                Select this Supplier
                                                             </Button>
                                                         </div>
                                                     )}

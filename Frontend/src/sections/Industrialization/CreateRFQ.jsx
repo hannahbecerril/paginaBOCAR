@@ -1,12 +1,9 @@
 import { useState, useEffect } from 'react';
-import Cookies from 'js-cookie';
 import Input from '../../components/ui/Input';
 import Button from '../../components/ui/Button';
 import UploadCard from '../../components/ui/UploadCard';
 import { CheckCircle, AlertCircle, ChevronRight, ChevronLeft, Save, Send, RefreshCw } from 'lucide-react';
-import { getRFQFormConfig, uploadDocument } from '../api';
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
+import { getRFQFormConfig, uploadDocument, createRFQ } from '../api';
 
 // ── Sub-componentes del formulario ────────────────────────────────────────────
 function SectionTitle({ children }) {
@@ -182,23 +179,9 @@ export default function RFQForm() {
 
         setLoading(true);
         setFeedback(null);
-        const token = Cookies.get('access_token');
 
         try {
-            const response = await fetch(`${API_BASE}/api/rfq/crear/`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                },
-                body: JSON.stringify(buildPayload(isDraft)),
-            });
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.error || 'Error creating RFQ');
-            }
+            const data = await createRFQ(buildPayload(isDraft));
 
             // Upload selected files for this RFQ
             const uploadErrors = [];
