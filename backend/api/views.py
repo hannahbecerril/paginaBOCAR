@@ -34,6 +34,8 @@ from .models import (
     MOLD_COSTBR_I, DIE_COSTBR_I,
     MOLD_COSTBR_P1_S, MOLD_COSTBR_P2_S, MOLD_COSTBR_P3_S,
     MOLD_COSTBR_P4_S, MOLD_COSTBR_P5_S, Archivo,
+    MOLD_CAVITIES_P1_S, MOLD_CAVITIES_P2_S, MOLD_CAVITIES_P3_S,
+    MOLD_INFO_P1_S, MOLD_INFO_P2_S, DIE_TRIM_S,
     DIE_COSTBR_P1_S, DIE_COSTBR_P2_S, DIE_COSTBR_P3_S, DIE_COSTBR_P4_S,
     RFQ_Tracking,
 )
@@ -177,6 +179,9 @@ class UsuarioDetailView(APIView):
             val = request.data['is_active']
             user.is_active = val if isinstance(val, bool) else str(val).lower() in ('true', '1')
 
+        if 'password' in request.data and request.data['password']:
+            user.set_password(request.data['password'])
+
         user.save()
         return Response(UsuarioReadSerializer(user).data)
 
@@ -283,12 +288,14 @@ class ProveedorDetailView(APIView):
 
     def patch(self, request, pk):
         user = self._get_supplier(pk)
-        for field in ('email', 'first_name', 'last_name'):
+        for field in ('email', 'first_name', 'last_name', 'username'):
             if field in request.data:
                 setattr(user, field, request.data[field])
         if 'is_active' in request.data:
             val = request.data['is_active']
             user.is_active = val if isinstance(val, bool) else str(val).lower() in ('true', '1')
+        if 'password' in request.data and request.data['password']:
+            user.set_password(request.data['password'])
         user.save()
         return Response(ProveedorSerializer(user).data)
 
@@ -529,39 +536,83 @@ class RFQDetailView(APIView):
                 ],
             }
 
-        # Stage 3 — Quote responses (visible from waiting_for_suppliers onwards)
+        # Stage 3 — Quote responses.
+        # Suppliers: visible from sent_to_suppliers onwards (so they can submit their quote).
+        # Internal users: visible from waiting_for_suppliers onwards (when responses exist).
         stage3 = None
-        active_stages = [STATUS.WAITING_FOR_SUPPLIERS, STATUS.SUPPLIER_SELECTED, STATUS.RFQ_CLOSED]
-        if rfq.status in active_stages:
-            if rfq.type == 'mold':
-                usernames = list(MOLD_COSTBR_P1_S.objects.filter(id_rfq=rfq).exclude(Elaborated_by='').values_list('Elaborated_by', flat=True))
-                responses = [
-                    {
-                        'supplier': u,
-                        'p1': MOLD_COSTBR_P1_S.objects.filter(id_rfq=rfq, Elaborated_by=u).values().first() or {},
-                        'p2': MOLD_COSTBR_P2_S.objects.filter(id_rfq=rfq, Elaborated_by=u).values().first() or {},
-                        'p3': MOLD_COSTBR_P3_S.objects.filter(id_rfq=rfq, Elaborated_by=u).values().first() or {},
-                        'p4': MOLD_COSTBR_P4_S.objects.filter(id_rfq=rfq, Elaborated_by=u).values().first() or {},
-                        'p5': MOLD_COSTBR_P5_S.objects.filter(id_rfq=rfq, Elaborated_by=u).values().first() or {},
-                    }
-                    for u in usernames
-                ]
+        is_supplier_role = 'Supplier' in grupos
+        internal_stages = [STATUS.WAITING_FOR_SUPPLIERS, STATUS.SUPPLIER_SELECTED, STATUS.RFQ_CLOSED]
+        supplier_stages = STATUS.SUPPLIER_ACTIVE + [STATUS.SUPPLIER_SELECTED, STATUS.RFQ_CLOSED]
+
+        if (is_supplier_role and rfq.status in supplier_stages) or \
+           (not is_supplier_role and rfq.status in internal_stages):
+
+            if is_supplier_role:
+                # Return only this supplier's own draft/submitted response
+                username = request.user.username
+                if rfq.type == 'mold':
+                    own_p1 = MOLD_COSTBR_P1_S.objects.filter(id_rfq=rfq, Elaborated_by=username).values().first()
+                    responses = [{
+                        'supplier': username,
+                        'p1': own_p1 or {},
+                        'p2': MOLD_COSTBR_P2_S.objects.filter(id_rfq=rfq, Elaborated_by=username).values().first() or {},
+                        'p3': MOLD_COSTBR_P3_S.objects.filter(id_rfq=rfq, Elaborated_by=username).values().first() or {},
+                        'p4': MOLD_COSTBR_P4_S.objects.filter(id_rfq=rfq, Elaborated_by=username).values().first() or {},
+                        'p5': MOLD_COSTBR_P5_S.objects.filter(id_rfq=rfq, Elaborated_by=username).values().first() or {},
+                        'cav1': MOLD_CAVITIES_P1_S.objects.filter(id_rfq=rfq, supplier__username=username).values().first() or {},
+                        'cav2': MOLD_CAVITIES_P2_S.objects.filter(id_rfq=rfq, supplier__username=username).values().first() or {},
+                        'cav3': MOLD_CAVITIES_P3_S.objects.filter(id_rfq=rfq, supplier__username=username).values().first() or {},
+                        'info1': MOLD_INFO_P1_S.objects.filter(id_rfq=rfq, supplier__username=username).values().first() or {},
+                        'info2': MOLD_INFO_P2_S.objects.filter(id_rfq=rfq, supplier__username=username).values().first() or {},
+                    }] if own_p1 else []
+                else:
+                    own_p1 = DIE_COSTBR_P1_S.objects.filter(id_rfq=rfq, Elaborated_by=username).values().first()
+                    responses = [{
+                        'supplier': username,
+                        'p1': own_p1 or {},
+                        'p2': DIE_COSTBR_P2_S.objects.filter(id_rfq=rfq, supplier__username=username).values().first() or {},
+                        'p3': DIE_COSTBR_P3_S.objects.filter(id_rfq=rfq, supplier__username=username).values().first() or {},
+                        'p4': DIE_COSTBR_P4_S.objects.filter(id_rfq=rfq, supplier__username=username).values().first() or {},
+                        'info1': DIE_TRIM_S.objects.filter(id_rfq=rfq, supplier__username=username).values().first() or {},
+                    }] if own_p1 else []
             else:
-                usernames = list(DIE_COSTBR_P1_S.objects.filter(id_rfq=rfq).exclude(Elaborated_by='').values_list('Elaborated_by', flat=True))
-                responses = [
-                    {
-                        'supplier': u,
-                        'p1': DIE_COSTBR_P1_S.objects.filter(id_rfq=rfq, Elaborated_by=u).values().first() or {},
-                        'p2': DIE_COSTBR_P2_S.objects.filter(id_rfq=rfq, Elaborated_by=u).values().first() or {},
-                        'p3': DIE_COSTBR_P3_S.objects.filter(id_rfq=rfq, Elaborated_by=u).values().first() or {},
-                        'p4': DIE_COSTBR_P4_S.objects.filter(id_rfq=rfq, Elaborated_by=u).values().first() or {},
-                    }
-                    for u in usernames
-                ]
+                # Internal users see all supplier responses
+                if rfq.type == 'mold':
+                    usernames = list(MOLD_COSTBR_P1_S.objects.filter(id_rfq=rfq).exclude(Elaborated_by='').values_list('Elaborated_by', flat=True))
+                    responses = [
+                        {
+                            'supplier': u,
+                            'p1': MOLD_COSTBR_P1_S.objects.filter(id_rfq=rfq, Elaborated_by=u).values().first() or {},
+                            'p2': MOLD_COSTBR_P2_S.objects.filter(id_rfq=rfq, Elaborated_by=u).values().first() or {},
+                            'p3': MOLD_COSTBR_P3_S.objects.filter(id_rfq=rfq, Elaborated_by=u).values().first() or {},
+                            'p4': MOLD_COSTBR_P4_S.objects.filter(id_rfq=rfq, Elaborated_by=u).values().first() or {},
+                            'p5': MOLD_COSTBR_P5_S.objects.filter(id_rfq=rfq, Elaborated_by=u).values().first() or {},
+                            'cav1': MOLD_CAVITIES_P1_S.objects.filter(id_rfq=rfq, supplier__username=u).values().first() or {},
+                            'cav2': MOLD_CAVITIES_P2_S.objects.filter(id_rfq=rfq, supplier__username=u).values().first() or {},
+                            'cav3': MOLD_CAVITIES_P3_S.objects.filter(id_rfq=rfq, supplier__username=u).values().first() or {},
+                            'info1': MOLD_INFO_P1_S.objects.filter(id_rfq=rfq, supplier__username=u).values().first() or {},
+                            'info2': MOLD_INFO_P2_S.objects.filter(id_rfq=rfq, supplier__username=u).values().first() or {},
+                        }
+                        for u in usernames
+                    ]
+                else:
+                    usernames = list(DIE_COSTBR_P1_S.objects.filter(id_rfq=rfq).exclude(Elaborated_by='').values_list('Elaborated_by', flat=True))
+                    responses = [
+                        {
+                            'supplier': u,
+                            'p1': DIE_COSTBR_P1_S.objects.filter(id_rfq=rfq, Elaborated_by=u).values().first() or {},
+                            'p2': DIE_COSTBR_P2_S.objects.filter(id_rfq=rfq, supplier__username=u).values().first() or {},
+                            'p3': DIE_COSTBR_P3_S.objects.filter(id_rfq=rfq, supplier__username=u).values().first() or {},
+                            'p4': DIE_COSTBR_P4_S.objects.filter(id_rfq=rfq, supplier__username=u).values().first() or {},
+                            'info1': DIE_TRIM_S.objects.filter(id_rfq=rfq, supplier__username=u).values().first() or {},
+                        }
+                        for u in usernames
+                    ]
+
             stage3 = {
                 'responses': responses,
                 'statistics': {
-                    'responsesReceived': len(responses),
+                    'responsesReceived': RFQ_Assignment.objects.filter(id_rfq=rfq, has_responded=True).count(),
                     'totalInvited': RFQ_Assignment.objects.filter(id_rfq=rfq).count(),
                 },
             }
@@ -653,9 +704,21 @@ class RFQClasificadoListView(APIView):
 
         for item in data:
             _inject_detalles(item)
-            if 'Supplier' in grupos and item.get('status') == STATUS.SUPPLIER_SELECTED:
+            if 'Supplier' in grupos:
                 assignment = RFQ_Assignment.objects.filter(id_rfq_id=item['id_rfq'], supplier=user).first()
-                item['is_winner'] = assignment.is_winner if assignment else False
+                if assignment:
+                    item['is_winner'] = assignment.is_winner
+                    item['has_responded'] = assignment.has_responded
+                    if assignment.is_winner:
+                        item['supplier_status'] = "This RFQ has been selected"
+                    elif item.get('status') == STATUS.SUPPLIER_SELECTED:
+                        item['supplier_status'] = "Not Selected"
+                    elif assignment.has_responded:
+                        item['supplier_status'] = "Waiting for response"
+                    else:
+                        item['supplier_status'] = "Pending"
+                else:
+                    item['supplier_status'] = "Pending"
 
         return Response(data)
 
@@ -1121,6 +1184,23 @@ class CotizacionProveedorView(APIView):
         is_draft = data.get('is_draft', True)
         proveedor_identificador = request.user.username
 
+        # Sanitise cost dicts: drop DB-internal / metadata keys.
+        # Replace None numeric values with 0 so NOT NULL FloatField columns
+        # never receive NULL.  DateField / CharField nulls are stripped instead
+        # of converted to 0 to avoid type errors on re-submission.
+        _DB_KEYS = frozenset({
+            'id', 'id_rfq_id', 'supplier_id', 'supplier',
+            'Last_change', 'Last_edit_by', 'Last_edited_by', 'Elaborated_by',
+        })
+
+        def _clean_cost(raw):
+            cleaned = {}
+            for k, v in (raw or {}).items():
+                if k in _DB_KEYS:
+                    continue
+                cleaned[k] = 0 if v is None else v
+            return cleaned
+
         try:
             if rfq_base.type == 'mold':
                 bloques = [
@@ -1129,14 +1209,21 @@ class CotizacionProveedorView(APIView):
                     ('mold_cost_p3', MOLD_COSTBR_P3_S),
                     ('mold_cost_p4', MOLD_COSTBR_P4_S),
                     ('mold_cost_p5', MOLD_COSTBR_P5_S),
+                    ('mold_cavities_p1', MOLD_CAVITIES_P1_S),
+                    ('mold_cavities_p2', MOLD_CAVITIES_P2_S),
+                    ('mold_cavities_p3', MOLD_CAVITIES_P3_S),
+                    ('mold_info_p1', MOLD_INFO_P1_S),
+                    ('mold_info_p2', MOLD_INFO_P2_S),
                 ]
                 for key, model in bloques:
-                    cost_data = data.get(key, {})
+                    cost_data = _clean_cost(data.get(key))
                     if cost_data:
-                        cost_data['Elaborated_by'] = proveedor_identificador
-                        model.objects.update_or_create(
-                            id_rfq=rfq_base, Elaborated_by=proveedor_identificador, defaults=cost_data
-                        )
+                        # info tables and cavities use 'supplier' FK, others use 'Elaborated_by' string
+                        if model in (MOLD_INFO_P1_S, MOLD_INFO_P2_S, DIE_TRIM_S, MOLD_CAVITIES_P1_S, MOLD_CAVITIES_P2_S, MOLD_CAVITIES_P3_S):
+                            model.objects.update_or_create(id_rfq=rfq_base, supplier=request.user, defaults=cost_data)
+                        else:
+                            cost_data['Elaborated_by'] = proveedor_identificador
+                            model.objects.update_or_create(id_rfq=rfq_base, Elaborated_by=proveedor_identificador, defaults=cost_data)
 
             elif rfq_base.type == 'die':
                 bloques_die = [
@@ -1144,14 +1231,17 @@ class CotizacionProveedorView(APIView):
                     ('die_cost_p2', DIE_COSTBR_P2_S),
                     ('die_cost_p3', DIE_COSTBR_P3_S),
                     ('die_cost_p4', DIE_COSTBR_P4_S),
+                    ('die_trim_s', DIE_TRIM_S),
                 ]
                 for key, model in bloques_die:
-                    cost_data = data.get(key, {})
+                    cost_data = _clean_cost(data.get(key))
                     if cost_data:
-                        cost_data['Elaborated_by'] = proveedor_identificador
-                        model.objects.update_or_create(
-                            id_rfq=rfq_base, Elaborated_by=proveedor_identificador, defaults=cost_data
-                        )
+                        # DIE P2, P3, P4 and TRIM_S use supplier, P1 uses Elaborated_by
+                        if model in (MOLD_INFO_P1_S, MOLD_INFO_P2_S, DIE_TRIM_S, DIE_COSTBR_P2_S, DIE_COSTBR_P3_S, DIE_COSTBR_P4_S):
+                            model.objects.update_or_create(id_rfq=rfq_base, supplier=request.user, defaults=cost_data)
+                        else:
+                            cost_data['Elaborated_by'] = proveedor_identificador
+                            model.objects.update_or_create(id_rfq=rfq_base, Elaborated_by=proveedor_identificador, defaults=cost_data)
 
             if is_draft:
                 estado_msg = "Cotizacion guardada como borrador."
@@ -1248,18 +1338,16 @@ class DashboardIndustrializacionView(APIView):
                 fecha_hora__lt=day_end,
             )
             if transitions.exists():
-                avg_days = sum(
-                    (RFQ_Tracking.objects.filter(
+                total_days = 0
+                count = 0
+                for t in transitions:
+                    first_draft = RFQ_Tracking.objects.filter(
                         id_rfq_id=t.id_rfq_id, nivel_alcanzado=STATUS.IND_DRAFT
-                    ).order_by('fecha_hora').values_list('fecha_hora', flat=True).first() or t.fecha_hora
-                    and (t.fecha_hora - RFQ_Tracking.objects.filter(
-                        id_rfq_id=t.id_rfq_id, nivel_alcanzado=STATUS.IND_DRAFT
-                    ).order_by('fecha_hora').values_list('fecha_hora', flat=True).first()).total_seconds() / 86400.0
-                    )
-                    for t in transitions if RFQ_Tracking.objects.filter(
-                        id_rfq_id=t.id_rfq_id, nivel_alcanzado=STATUS.IND_DRAFT
-                    ).exists()
-                ) / transitions.count() if transitions.count() else 0
+                    ).order_by('fecha_hora').values_list('fecha_hora', flat=True).first()
+                    if first_draft:
+                        total_days += (t.fecha_hora - first_draft).total_seconds() / 86400.0
+                        count += 1
+                avg_days = total_days / count if count > 0 else 0
                 draft_to_sent_per_period.append(round(avg_days, 2))
             else:
                 draft_to_sent_per_period.append(0)

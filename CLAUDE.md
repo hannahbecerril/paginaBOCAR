@@ -130,9 +130,9 @@ The secret key is `PROVEEDOR_SECRET_KEY` in `backend/core/settings.py`.
 
 ## Known Issues
 
-All critical bugs from the original codebase have been resolved (migrations 0008–0012). See `backend/ARCHITECTURAL_RISKS.md` for the full resolution history.
+All critical bugs from the original codebase have been resolved (migrations 0008–0013). See `backend/ARCHITECTURAL_RISKS.md` for the full resolution history.
 
-Remaining open items (as of 2026-06-02):
+Remaining open items (as of 2026-06-04):
 
 - **No test coverage**: `api/tests.py` is empty. See `ARCHITECTURAL_RISKS.md §10`.
 - **`completionPercentage` always 0 in RFQ detail page**: `normalizeRFQDetail` in `api.js` hardcodes 0. `RFQDetailView` does not include `completion_percentage` in its response. Fix: inject it in `RFQDetailView.get()` or call `getRFQProgress(id)` client-side. See `frontend/API_RISKS.md §14-A`.
@@ -140,6 +140,22 @@ Remaining open items (as of 2026-06-02):
 - **`PROVEEDOR_SECRET_KEY` defaults to `'clave_secreta'`**: The dev default is still a trivially guessable string. Set `PROVEEDOR_SECRET_KEY` via environment variable in any non-local deployment. See `backend/ARCHITECTURAL_RISKS.md §7`.
 - **Supplier PATCH/DELETE requires only `IsPurchasesUser`**: Any Purchases user can delete a supplier. Recommend raising to `IsPurchasesAdmin`. See `frontend/API_RISKS.md §14-H`.
 - **`EditarRFQView` missing backend guard for `sent_to_purchases`**: `submitRFQForReview` could accidentally re-draft an RFQ already in Purchases. ActionBar guards this client-side; the backend only blocks at `sent_to_suppliers` and beyond. See `frontend/API_RISKS.md §14-G`.
+
+### Recently resolved bugs (2026-06-04)
+
+| Bug | Fix |
+|-----|-----|
+| 401 error on "Send for Approve" when token expired mid-form | `CreateRFQ.jsx` now uses `createRFQ()` from `api.js` (has auto-refresh) instead of a raw `fetch()` |
+| Suppliers could not submit quotes — QuoteForm not visible for `sent_to_suppliers` status | `RFQDetailView` now returns `stage3` for suppliers starting at `sent_to_suppliers`; only their own response is included |
+| After submitting final quote, supplier stayed on same page | `onSubmitSuccess` now navigates to `/Suppliers/All-RFQ` |
+| `NOT NULL constraint failed: DIE_COSTBR_P1_S.Last_change` on any die quote save | `Last_change` field made nullable (migration 0013); `_clean_cost()` helper strips metadata fields before DB write |
+| `None` FloatField values from empty quote form cells caused 500 on die quotes | `_clean_cost()` converts `null → 0` for numeric fields; strips `id`, `id_rfq_id`, `Last_change`, `Last_edit_by`, `Elaborated_by` |
+| 500 error on re-submission of die quote (after draft reload) | Frontend `cleanSeed()` strips DB-internal fields when seeding `formData`; backend also strips them via `_DB_KEYS` |
+| `UploadCard` never called `onFileUpload` — `canSubmit` always false in `CreateRFQ` | Fixed stale closure in `simulateUpload`: raw `File` passed directly instead of reading from stale state |
+| Suppliers could see `CUST` (Customer) field in RFQ specs | `RFQDetails.jsx` filters `CUST` and `ELAB` from spec display when `userRole === 'suppliers'` |
+| "Submit Final Quote" button visible even with incomplete form | Button is now **hidden** (not just disabled) until `Company` and `Country` in P1 are filled |
+| Password change not available when editing an existing user/supplier | Password field shown in edit mode for both users and suppliers; backend PATCH handlers call `set_password()` |
+| `submitQuote` missing from `RFQDetails.jsx` imports (runtime error) | Added to the import list from `../../sections/api` |
 
 ---
 

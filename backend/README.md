@@ -73,7 +73,7 @@ cd backend
 python manage.py migrate
 ```
 
-Creates `backend/db.sqlite3` and applies migrations 0001 → 0012 in order.
+Creates `backend/db.sqlite3` and applies migrations 0001 → 0013 in order.
 
 Current migration history:
 
@@ -85,6 +85,7 @@ Current migration history:
 | 0010 | Dropped `Status_RFQ` table; fixed FK targets; added `DIE_COSTBR_P1_S.Company` |
 | 0011 | Added `RFQ_Base.category` + `priority`; added `Archivo.id_rfq` FK; created `Notificacion` model |
 | 0012 | Added `Archivo.file_type` + `is3d`; added `RFQ_Base.response_deadline`, `shipping_terms`, `quality_requirements` |
+| 0013 | Made `DIE_COSTBR_P1_S.Last_change` nullable; fixes NOT NULL constraint on all die quote saves |
 
 ### 4. Seed default users and roles
 
@@ -147,7 +148,7 @@ backend/
 │   │   ├── die_trim_i.py         # DIE_TRIM_I
 │   │   ├── die_costbr_p1_s.py … die_costbr_p4_s.py
 │   │   └── die_costbr_i.py       # DIE_COSTBR_I
-│   ├── migrations/               # 0001 → 0012
+│   ├── migrations/               # 0001 → 0013
 │   └── management/
 │       └── commands/
 │           └── seed_users.py

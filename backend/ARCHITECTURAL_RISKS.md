@@ -16,7 +16,7 @@ All routes now use the `/api/` prefix. The broken `/rfqs/pendientes-compras/` ro
 
 ## 2. State Machine
 
-### ✅ 2.0 Migration history (through 0012)
+### ✅ 2.0 Migration history (through 0013)
 
 | Migration | What it did |
 |-----------|-------------|
@@ -25,6 +25,7 @@ All routes now use the `/api/` prefix. The broken `/rfqs/pendientes-compras/` ro
 | 0010 | Dropped `Status_RFQ` table; fixed `nivel_alcanzado` max_length (10→50) + added `choices`; changed `MOLD_COSTBR_I`/`DIE_COSTBR_I` supplier FK to `User`; added `DIE_COSTBR_P1_S.Company` as a proper CharField |
 | 0011 | Added `RFQ_Base.category` + `priority`; added `Archivo.id_rfq` FK; created `Notificacion` model |
 | 0012 | Added `Archivo.file_type` (CharField) + `is3d` (BooleanField); added `RFQ_Base.response_deadline` (DateField), `shipping_terms` (CharField), `quality_requirements` (TextField) |
+| 0013 | Made `DIE_COSTBR_P1_S.Last_change` nullable (`null=True`) — it was `DateField(blank=True)` without `null=True`, causing `NOT NULL constraint failed` on every die quote save since the frontend never sends this field |
 
 ### ✅ 2.1 Status values (live)
 
@@ -50,6 +51,18 @@ Per-supplier display (derived from `RFQ_Assignment`):
 ---
 
 ## 3. Business Logic
+
+### ✅ 3.9 Supplier quote submission failed with 500 (die RFQs)
+
+Two bugs in `CotizacionProveedorView`:
+
+1. **`Last_change` NOT NULL constraint** — `DIE_COSTBR_P1_S.Last_change` was a `DateField(blank=True)` without `null=True`. The frontend never sends this field, so every CREATE failed. Fixed by migration 0013 (makes the column nullable).
+
+2. **`None` float values caused 500 on second submission** — when a supplier reopened a die RFQ after saving a draft, the backend loaded the saved `p1` record (which included `Last_change: null`, `id`, `id_rfq_id`, etc.). The frontend sent these back; `_clean_cost()` converted `Last_change: null → 0`, which Django then tried to store in a `DateField` → `TypeError`. Fix: `_clean_cost()` now strips a fixed `_DB_KEYS` set (`id`, `id_rfq_id`, `supplier_id`, `supplier`, `Last_change`, `Last_edit_by`, `Last_edited_by`, `Elaborated_by`) and converts remaining `null → 0` for numeric columns only. `Elaborated_by` is always set server-side from the authenticated user, preventing spoofing.
+
+### ✅ 3.10 Password change not supported for existing users/suppliers
+
+`UsuarioDetailView.patch` and `ProveedorDetailView.patch` did not handle a `password` field. Frontend `UserDetails.jsx` now sends `password` when the edit field is filled. Backend calls `user.set_password(data['password'])` before saving. `ProveedorDetailView.patch` also now accepts `username` in addition to the existing editable fields.
 
 ### ✅ 3.1 First supplier locked out all others
 `CotizacionProveedorView` now accepts submissions when `status` is `sent_to_suppliers` **or** `waiting_for_suppliers`. Late-responding suppliers are no longer blocked.

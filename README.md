@@ -148,10 +148,12 @@ Key endpoints:
 
 See [`backend/ARCHITECTURAL_RISKS.md`](backend/ARCHITECTURAL_RISKS.md) and [`frontend/API_RISKS.md`](frontend/API_RISKS.md) for full details.
 
-Open items as of 2026-06-02:
+Open items as of 2026-06-04:
 
 - **No test coverage**: `api/tests.py` is empty. No automated tests for business logic, state machine transitions, or permission checks.
 - **`completionPercentage` always 0 in RFQ detail page**: `normalizeRFQDetail` hardcodes 0. `RFQDetailView` does not include `completion_percentage`. Fix: call `getRFQProgress(id)` inside the detail view or client-side in `RFQDetails.jsx`.
 - **Notifications never emitted**: The `Notificacion` table is always empty — no state transition creates notification records.
 - **Supplier PATCH/DELETE requires only `IsPurchasesUser`**: Any Purchases user can delete a supplier. Should require `IsPurchasesAdmin`.
 - **`EditarRFQView` missing backend guard for `sent_to_purchases`**: `submitRFQForReview` could accidentally re-draft an RFQ already in Purchases. Guarded client-side in ActionBar only.
+
+Recently resolved (2026-06-04): 401 on RFQ creation, supplier quote 500 errors (die `Last_change` NOT NULL, null FloatFields), `UploadCard` never firing `onFileUpload`, supplier seeing customer name, password change in user profile, `Submit Final Quote` visibility, post-quote navigation to All RFQs.

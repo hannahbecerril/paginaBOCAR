@@ -370,16 +370,20 @@ Submit a cost breakdown quote. Accepted while status is `sent_to_suppliers` **or
 ```json
 {
   "is_draft": false,
-  "die_cost_p1": { "Elaborated_by": "supplier_user", "Country": "MX" },
-  "die_cost_p2": {},
+  "die_cost_p1": { "Company": "SupplierCo", "Country": "MX", "Base_currency": "USD" },
+  "die_cost_p2": { "Mill_H": 120, "Mill_PriceH": 45.0, "Mill_Total": 5400.0 },
   "die_cost_p3": {},
   "die_cost_p4": {}
 }
 ```
 
+> **Note:** Do NOT send `Elaborated_by`, `Last_change`, `Last_edit_by`, `id`, `id_rfq_id`, or `supplier_id` in the request body — these are stripped server-side and `Elaborated_by` is always set from the authenticated JWT user. Sending them has no effect and previously caused 500 errors on re-submission.
+
 **`is_draft` behavior:**
 - `true` → saves data, status unchanged
 - `false` → sets `RFQ_Assignment.has_responded=True` for this supplier; if RFQ was `sent_to_suppliers`, advances to `waiting_for_suppliers`
+
+**Die-specific fix (migration 0013):** `DIE_COSTBR_P1_S.Last_change` is now nullable. The backend `_clean_cost()` helper strips all DB-internal keys and converts `null` numeric values to `0` before writing — this prevents NOT NULL constraint errors when the supplier leaves cost cells empty.
 
 ---
 
@@ -468,7 +472,13 @@ Full RFQ detail — all three stages.
 }
 ```
 
-`stage2` is `null` for `Supplier` role. `stage3` is `null` until `waiting_for_suppliers`. `is_winner` non-null only for `Supplier` + `supplier_selected`. `documentos` fields use English names since migration 0012.
+`stage2` is `null` for `Supplier` role.
+
+`stage3` visibility by role:
+- **Supplier role:** returned from `sent_to_suppliers` onwards; contains only that supplier's own draft/submitted response (empty array if no response yet). This allows `QuoteForm` to render immediately when a supplier first opens the RFQ.
+- **Internal roles:** returned from `waiting_for_suppliers` onwards; contains all supplier responses.
+
+`is_winner` non-null only for `Supplier` + `supplier_selected`. `documentos` fields use English names since migration 0012. `stage3.statistics.responsesReceived` counts `RFQ_Assignment.has_responded=True` records (not raw cost-breakdown rows).
 
 ---
 
@@ -531,6 +541,8 @@ Supplier list (GET, `IsPurchasesUser`) or create supplier account (POST, `IsSupe
 ### GET / PATCH / DELETE `/api/proveedores/{pk}/`
 Supplier detail, update, delete. `IsPurchasesUser`.
 
+**PATCH accepted fields:** `email`, `first_name`, `last_name`, `username`, `is_active` (boolean), `password` (plain text — stored via `set_password()`, never returned).
+
 ---
 
 ### GET `/api/usuarios/listar/`
@@ -538,6 +550,8 @@ List internal users (excludes Supplier group). `IsInternalUser` — accessible t
 
 ### GET / PATCH / DELETE `/api/usuarios/{pk}/`
 Internal user detail (GET: `IsInternalUser`) or modify/delete (PATCH/DELETE: `IsSuperAdmin`).
+
+**PATCH accepted fields:** `email`, `first_name`, `last_name`, `rol` (exact Group name), `is_active` (boolean), `password` (plain text — stored via `set_password()`, never returned).
 
 ### POST `/api/usuarios/{pk}/reset-password/`
 Placeholder — returns 200 with a message. No email sent in dev. `IsSuperAdmin`.
@@ -596,3 +610,7 @@ All previously documented route and backend bugs have been resolved. See `ARCHIT
 | `offers_count` missing from list | Injected by `_inject_detalles()` in `RFQClasificadoListView` |
 | `AprobarRechazarProveedoresView` Spanish-only action | Accepts both `accion`/`action` and `aprobar`/`approve` |
 | Dashboard no time-series data | Both Ind + Purchases dashboards return `statusChangeData`, `rfqDistributionData`, accept `?range=` |
+| Die quote 500 — `Last_change` NOT NULL | Made nullable in migration 0013; `_clean_cost()` added to `CotizacionProveedorView` |
+| `Elaborated_by` spoofable from client | Now stripped from request body and set server-side from JWT user |
+| Password change unsupported for existing users | `PATCH /api/usuarios/{pk}/` and `PATCH /api/proveedores/{pk}/` now call `set_password()` when `password` is provided |
+| `stage3` null for supplier at `sent_to_suppliers` | `RFQDetailView` now returns `stage3` for Supplier role from `sent_to_suppliers`; only their own response included |

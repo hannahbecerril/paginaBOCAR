@@ -1,4 +1,5 @@
-from .base import Users_Permissions, RFQ_Base, RFQ_Assignment, Attachments, Suppliers
+from django.contrib.auth.models import User
+from .base import Users_Permissions, RFQ_Base, RFQ_Assignment, Attachments, User
 from .mold_info_i import MOLD_INFO_P1_I, MOLD_INFO_P2_I
 from .mold_info_s import MOLD_INFO_P1_S, MOLD_INFO_P2_S
 from .mold_costbr_i import MOLD_COSTBR_I
