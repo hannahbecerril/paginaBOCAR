@@ -209,17 +209,28 @@ export default function TableComponent({
                     'supplier_selected':       { color: 'var(--status-completed)',    backgroundColor: 'rgba(59, 130, 246, 0.1)',         borderColor: 'var(--status-completed)' },
                     'rfq_closed':              { color: 'var(--status-cancelled)',    backgroundColor: 'rgba(239, 68, 68, 0.1)',          borderColor: 'var(--status-cancelled)' },
                     
-                    // Custom Supplier Statuses
-                    'This RFQ has been selected': { color: 'var(--status-completed)', backgroundColor: 'rgba(59, 130, 246, 0.1)',         borderColor: 'var(--status-completed)' },
-                    'Waiting for response':       { color: 'var(--status-pending)',   backgroundColor: 'rgba(245, 158, 11, 0.1)',         borderColor: 'var(--status-pending)' },
-                    'Pending':                    { color: 'var(--text-tertiary)',    backgroundColor: 'var(--surface-disabled)',         borderColor: 'var(--border-default)' },
-                    'Not Selected':               { color: 'var(--status-cancelled)', backgroundColor: 'rgba(239, 68, 68, 0.1)',          borderColor: 'var(--status-cancelled)' },
+                    // Custom Supplier Statuses (AQUÍ ESTÁ LA MAGIA)
+                    'You were the winner for this RFQ': { color: 'var(--status-active)', backgroundColor: 'rgba(16, 185, 129, 0.1)',      borderColor: 'var(--status-active)' },
+                    'You have been assigned this RFQ':  { color: 'var(--status-completed)', backgroundColor: 'rgba(59, 130, 246, 0.1)',   borderColor: 'var(--status-completed)' },
+                    'Waiting for response':             { color: 'var(--status-pending)',   backgroundColor: 'rgba(245, 158, 11, 0.1)',   borderColor: 'var(--status-pending)' },
+                    'Pending':                          { color: 'var(--text-tertiary)',    backgroundColor: 'var(--surface-disabled)',   borderColor: 'var(--border-default)' },
+                    'Not Selected':                     { color: 'var(--status-cancelled)', backgroundColor: 'rgba(239, 68, 68, 0.1)',    borderColor: 'var(--status-cancelled)' },
                 };
+                
                 const rfqStatusStyle = rfqStatusStyles[value] || { color: 'var(--text-secondary)', backgroundColor: 'var(--surface-hover)', borderColor: 'var(--border-default)' };
+                
                 // Display human-readable label; fall back to raw value if unknown
                 const rfqStatusLabel = STATUS_LABEL[value] ?? value;
+                
+                // Condición para agregar el icono de trofeo
+                const isWinner = value === 'You were the winner for this RFQ';
+
                 return (
-                    <span className="inline-flex justify-center px-2.5 py-0.5 text-xs font-medium border" style={rfqStatusStyle}>
+                    <span 
+                        className="inline-flex items-center justify-center gap-1 px-2.5 py-0.5 text-xs font-medium border" 
+                        style={rfqStatusStyle}
+                    >
+                        {isWinner && <span></span>}
                         {rfqStatusLabel}
                     </span>
                 );

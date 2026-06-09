@@ -250,7 +250,15 @@ export async function getIndustrializationAllRFQs() {
 }
 
 export async function getIndustrializationDrafts() {
+    // Admin: returns only pure drafts (submitted_for_review=False)
+    // Engineer: returns all IND_DRAFT status RFQs
     const list = await apiFetch('/api/rfqs/lista/?vista=draft');
+    return list.map(normalizeRFQ);
+}
+
+export async function getIndustrializationPendingReview() {
+    // Admin-only: RFQs submitted by engineers awaiting admin approval (submitted_for_review=True)
+    const list = await apiFetch('/api/rfqs/lista/?vista=not_answered');
     return list.map(normalizeRFQ);
 }
 
@@ -261,20 +269,15 @@ export async function getPurchasesAllRFQs() {
 }
 
 export async function getPurchasesDrafts() {
-    // Backend returns both sent_to_purchases and purchases_draft for Purchases ?vista=draft
-    // Purchases "Drafts" tab = supplier list being built = purchases_draft
     const list = await apiFetch('/api/rfqs/lista/?vista=draft');
-    return list
-        .filter(r => r.status === 'purchases_draft')
-        .map(normalizeRFQ);
+    return list.filter(r => r.status === 'purchases_draft') // <--- ¡AQUÍ ESTÁ EL PROBLEMA!
+               .map(normalizeRFQ);
 }
 
 export async function getPurchasesInbox() {
-    // Inbox = RFQs that arrived from Ind but Purchases hasn't acted on yet
-    const list = await apiFetch('/api/rfqs/lista/?vista=draft');
-    return list
-        .filter(r => r.status === 'sent_to_purchases')
-        .map(normalizeRFQ);
+    // CAMBIO: Ahora pedimos 'not_answered' para que el backend devuelva SENT_TO_PURCHASES
+    const list = await apiFetch('/api/rfqs/lista/?vista=not_answered');
+    return list.map(normalizeRFQ);
 }
 
 // Suppliers views
@@ -289,11 +292,10 @@ export async function getSuppliersDrafts() {
 }
 
 export async function getSuppliersInbox() {
-    // Unresponded RFQs — backend filters has_responded=False for Supplier ?vista=draft
-    const list = await apiFetch('/api/rfqs/lista/?vista=draft');
+    // CORRECCIÓN: Cambiamos ?vista=draft por ?vista=not_answered
+    const list = await apiFetch('/api/rfqs/lista/?vista=not_answered');
     return list.map(normalizeRFQ);
 }
-
 // ── RFQ mutations ─────────────────────────────────────────────────────────────
 
 export async function saveSpecifications(rfqId, data) {

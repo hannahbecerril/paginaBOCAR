@@ -1,9 +1,10 @@
 // components/layout/RFQDetails.jsx
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Users, FileText, Package, Eye, Download, CheckCircle, Clock, User, Mail, Phone, DollarSign, Calendar, Truck, Building, MessageSquare, Edit, Save, X, Trash2, Plus, Upload } from 'lucide-react';
+import { ArrowLeft, Users, FileText, Package, Eye, Download, CheckCircle, Clock, User, Mail, Phone, DollarSign, Calendar, Truck, Building, MessageSquare, Edit, Save, X, Trash2, Plus, Upload, Trophy } from 'lucide-react';
 import Button from '../ui/Button';
 import Card from '../ui/Card';
+import IARecommendations from '../ui/IARecommendations'; // <--- IMPORTACIÓN DE IA CON RUTA RELATIVA
 import {
     getRFQById, saveSpecifications, savePurchasesMetadata,
     submitRFQForReview, approveRFQInd,
@@ -13,7 +14,6 @@ import {
 import UploadCard from '../ui/UploadCard';
 import QuoteForm from '../../sections/Suppliers/QuoteForm';
 import { STATUS, STATUS_LABEL } from '../../constants/rfqStatus';
-
 export default function RFQDetails() {
     const { id } = useParams();
     const navigate = useNavigate();
@@ -416,6 +416,28 @@ export default function RFQDetails() {
                     </div>
                 </div>
 
+                {/* Banner de Adjudicacion */}
+                {userRole === 'suppliers' && rfqData.is_winner && (
+                    <div className="mb-6 flex items-start gap-4 p-5 rounded-lg border shadow-sm" 
+                         style={{ 
+                             backgroundColor: 'rgba(16, 185, 129, 0.08)', 
+                             borderColor: 'rgba(16, 185, 129, 0.3)' 
+                         }}>
+                        <div className="p-3 rounded-full" style={{ backgroundColor: 'var(--status-active)' }}>
+                            <Trophy size={28} className="text-white" />
+                        </div>
+                        <div>
+                            <h2 className="text-lg font-bold" style={{ color: 'var(--status-active)' }}>
+                                ¡Felicidades! Cotización Adjudicada
+                            </h2>
+                            <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
+                                Bocar Group ha aprobado el fallo gerencial a tu favor y has sido seleccionado como el proveedor oficial para este requerimiento. 
+                                El equipo de Compras se pondrá en contacto contigo a la brevedad para la emisión de la Orden de Compra (PO) y los siguientes pasos.
+                            </p>
+                        </div>
+                    </div>
+                )}
+
                 {/* RFQ meta info */}
                 <Card className="mb-6">
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
@@ -621,6 +643,11 @@ export default function RFQDetails() {
                                 <h3 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text-tertiary)' }}>RFQ Details</h3>
                                 {editingSection === 'stage2' ? (
                                     <div className="space-y-4">
+                                        {/* COMPONENTE DE IA INYECTADO AQUÍ */}
+                                        <div className="mb-4">
+                                            <IARecommendations rfqId={rfqData.id} />
+                                        </div>
+
                                         {/* Metadata fields */}
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                             {Object.entries(editData.metadata || {}).map(([k, v]) => (
@@ -813,21 +840,21 @@ export default function RFQDetails() {
                                                         </div>
                                                     </div>
                                                     
-                                                    {userRole === 'purchases' && rfqData.status === STATUS.WAITING_FOR_SUPPLIERS && (
-                                                        <div className="flex gap-2 mt-4">
-                                                            <Button size="sm" disabled={actionLoading}
-                                                                onClick={() => {
-                                                                    const supplierId = rfqData.stage2?.data?.suppliers?.find(
-                                                                        s => s.name === response.supplier || s.username === response.supplier
-                                                                    )?.id;
-                                                                    if (!supplierId) { setActionError('Cannot identify supplier ID.'); return; }
-                                                                    runAction(selectWinner, rfqData.id, supplierId);
-                                                                }}>
-                                                                <CheckCircle size={16} className="mr-2" />
-                                                                Select this Supplier
-                                                            </Button>
-                                                        </div>
-                                                    )}
+{userRole === 'purchases' && rfqData.status === STATUS.WAITING_FOR_SUPPLIERS && (
+    <div className="flex gap-2 mt-4">
+        <Button size="sm" disabled={actionLoading}
+            onClick={() => {
+                const supplierId = rfqData.stage2?.data?.suppliers?.find(
+                    s => s.name === response.supplier || s.username === response.supplier
+                )?.id;
+                if (!supplierId) { setActionError('Cannot identify supplier ID.'); return; }
+                runAction(selectWinner, rfqData.id, supplierId);
+            }}>
+            <CheckCircle size={16} className="mr-2" />
+            Propose this Supplier (Wait for Admin)
+        </Button>
+    </div>
+)}
                                                 </div>
                                             )}
                                         </div>
@@ -890,6 +917,7 @@ function ActionBar({ rfqData, userRole, isAdmin, loading, onAction }) {
     }
 
     // ── Purchases ─────────────────────────────────────────────────────────────
+   // ── Purchases ─────────────────────────────────────────────────────────────
     if (userRole === 'purchases') {
         // Purchases_Admin: approve or reject supplier list
         if (isAdmin && status === STATUS.PURCHASES_DRAFT && submitted_for_review) {
@@ -903,6 +931,16 @@ function ActionBar({ rfqData, userRole, isAdmin, loading, onAction }) {
                 </span>
             );
         }
+
+        // --- NUEVO: Indicador para el usuario normal cuando ya propuso al ganador ---
+        if (!isAdmin && status === STATUS.SUPPLIER_SELECTED) {
+            actions.push(
+                <span key="pending-award" className="text-sm" style={{ color: 'var(--text-tertiary)' }}>
+                    ⏳ Waiting for Purchases Admin final award approval
+                </span>
+            );
+        }
+
         // Purchases_Admin: final manager decision
         if (isAdmin && status === STATUS.SUPPLIER_SELECTED) {
             actions.push(btn('Final Award — Close RFQ', () => finalManagerDecision(id, 'aprobar')));

@@ -618,11 +618,24 @@ class RFQDetailView(APIView):
             }
 
         # Inject is_winner for Supplier role
-        if 'Supplier' in grupos and rfq.status == STATUS.SUPPLIER_SELECTED:
+        # Inject is_winner for Supplier role
+        if 'Supplier' in grupos and rfq.status in [STATUS.SUPPLIER_SELECTED, STATUS.RFQ_CLOSED]:
             assignment = RFQ_Assignment.objects.filter(id_rfq=rfq, supplier=request.user).first()
             is_winner = assignment.is_winner if assignment else False
         else:
             is_winner = None
+
+        documentos = [
+            {
+                'id': a.id,
+                'name': a.nombre,
+                'date': str(a.fecha_subida)[:10] if a.fecha_subida else None,
+                'type': a.file_type,
+                'is3D': a.is3d,
+                'uploadedBy': rfq.created_by,
+            }
+            for a in Archivo.objects.filter(id_rfq=rfq)
+        ]
 
         documentos = [
             {
@@ -666,42 +679,92 @@ class RFQClasificadoListView(APIView):
         grupos = list(user.groups.values_list('name', flat=True))
         tipo_vista = request.query_params.get('vista', 'all').lower()
 
-        if tipo_vista not in ['all', 'draft']:
-            return Response({"error": "Parametro 'vista' invalido. Use 'all' o 'draft'."}, status=status.HTTP_400_BAD_REQUEST)
+        VALID_VISTAS = ['all', 'draft', 'not_answered']
+        if tipo_vista not in VALID_VISTAS:
+            return Response(
+                {"error": f"Parametro 'vista' invalido. Use: {', '.join(VALID_VISTAS)}."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         queryset = RFQ_Base.objects.none()
+        is_ind_admin = 'Industrialization_Admin' in grupos or 'SuperAdmin' in grupos
+        is_ind_user  = 'Industrialization' in grupos
 
-        if 'Industrialization' in grupos or 'Industrialization_Admin' in grupos or 'SuperAdmin' in grupos:
+        if is_ind_admin or is_ind_user:
             if tipo_vista == 'all':
                 queryset = RFQ_Base.objects.filter(status__in=STATUS.PAST_IND)
-            else:
-                queryset = RFQ_Base.objects.filter(status=STATUS.IND_DRAFT)
+            elif tipo_vista == 'not_answered' and is_ind_admin:
+                queryset = RFQ_Base.objects.filter(status=STATUS.IND_DRAFT, submitted_for_review=True)
+            elif tipo_vista == 'draft':
+                if is_ind_admin:
+                    queryset = RFQ_Base.objects.filter(status=STATUS.IND_DRAFT, submitted_for_review=False)
+                else:
+                    queryset = RFQ_Base.objects.filter(status=STATUS.IND_DRAFT)
 
         elif 'Purchases' in grupos or 'Purchases_Admin' in grupos:
+            is_purchases_admin = 'Purchases_Admin' in grupos
+            
             if tipo_vista == 'all':
                 queryset = RFQ_Base.objects.filter(status__in=STATUS.PURCHASES_ALL)
-            else:
-                queryset = RFQ_Base.objects.filter(status__in=[STATUS.SENT_TO_PURCHASES, STATUS.PURCHASES_DRAFT])
-
-        elif 'Supplier' in grupos:
-            rfqs_asignados_ids = RFQ_Assignment.objects.filter(
-                supplier=user
-            ).values_list('id_rfq_id', flat=True)
-
-            if tipo_vista == 'all':
-                queryset = RFQ_Base.objects.filter(id_rfq__in=rfqs_asignados_ids, status__in=STATUS.SUPPLIER_ALL)
-            else:
-                responded_ids = RFQ_Assignment.objects.filter(
-                    supplier=user, has_responded=True
-                ).values_list('id_rfq_id', flat=True)
+            
+            elif tipo_vista == 'not_answered':
+                if is_purchases_admin:
+                    # El Administrador ve:
+                    # 1. Lo nuevo recién llegado de Industrialización ('sent_to_purchases')
+                    # 2. Lo que el comprador ya armó y mandó a revisión ('purchases_draft' + submitted)
+                    # 3. Lo que ya tiene terna seleccionada y requiere fallo final ('supplier_selected')
+                    queryset = RFQ_Base.objects.filter(
+                        Q(status__iexact='sent_to_purchases') | 
+                        Q(status__iexact='purchases_draft', submitted_for_review=True) |
+                        Q(status__iexact='supplier_selected')
+                    )
+                else:
+                    # El Comprador normal ve:
+                    # 1. Lo nuevo que le asignó Industrialización ('sent_to_purchases')
+                    # 2. Lo que regresó de los proveedores y está listo para análisis ('waiting_for_suppliers')
+                    queryset = RFQ_Base.objects.filter(
+                        Q(status__iexact='sent_to_purchases') |
+                        Q(status__iexact='waiting_for_suppliers')
+                    )
+            
+            elif tipo_vista == 'draft':
+                # Se unifica el comportamiento para Admin y Usuario normal:
+                # Ambos ven únicamente los borradores puros que aún NO han sido enviados a firma.
                 queryset = RFQ_Base.objects.filter(
-                    id_rfq__in=rfqs_asignados_ids,
-                    status__in=STATUS.SUPPLIER_ACTIVE,
-                ).exclude(id_rfq__in=responded_ids)
-
+                    status__iexact='purchases_draft', 
+                    submitted_for_review=False
+                )
+        elif 'Supplier' in grupos:
+            # 1. Obtenemos los RFQs asignados a este proveedor
+            assignments = RFQ_Assignment.objects.filter(supplier=user)
+            asignados_ids = assignments.values_list('id_rfq_id', flat=True)
+            
+            # 2. Identificamos si el proveedor actual YA INICIÓ un borrador.
+            # Buscamos en las tablas de costos P1 si ya hay un registro con su username.
+            mold_drafts = MOLD_COSTBR_P1_S.objects.filter(Elaborated_by=user.username).values_list('id_rfq_id', flat=True)
+            die_drafts = DIE_COSTBR_P1_S.objects.filter(Elaborated_by=user.username).values_list('id_rfq_id', flat=True)
+            mis_borradores_ids = list(mold_drafts) + list(die_drafts)
+            
+            if tipo_vista == 'not_answered':
+                # INBOX: Los RFQs que le asignaron, que NO ha respondido, y que NO ha empezado a cotizar
+                queryset = RFQ_Base.objects.filter(
+                    id_rfq__in=asignados_ids,
+                    assignments__supplier=user,
+                    assignments__has_responded=False
+                ).exclude(id_rfq__in=mis_borradores_ids)
+                
+            elif tipo_vista == 'draft':
+                # BORRADORES: Los RFQs que NO ha respondido oficialmente, pero que SÍ tienen datos guardados
+                queryset = RFQ_Base.objects.filter(
+                    id_rfq__in=mis_borradores_ids,
+                    assignments__supplier=user,
+                    assignments__has_responded=False
+                )
+                
+            else: # 'all'
+                queryset = RFQ_Base.objects.filter(id_rfq__in=asignados_ids)
         serializer = RFQBaseSerializer(queryset, many=True)
         data = list(serializer.data)
-
         for item in data:
             _inject_detalles(item)
             if 'Supplier' in grupos:
@@ -709,20 +772,14 @@ class RFQClasificadoListView(APIView):
                 if assignment:
                     item['is_winner'] = assignment.is_winner
                     item['has_responded'] = assignment.has_responded
+                    item['supplier_status'] = "Waiting for response" if assignment.has_responded else "Pending"
                     if assignment.is_winner:
-                        item['supplier_status'] = "This RFQ has been selected"
-                    elif item.get('status') == STATUS.SUPPLIER_SELECTED:
-                        item['supplier_status'] = "Not Selected"
+                        item['supplier_status'] = "You were the winner for this RFQ"
                     elif assignment.has_responded:
                         item['supplier_status'] = "Waiting for response"
                     else:
-                        item['supplier_status'] = "Pending"
-                else:
-                    item['supplier_status'] = "Pending"
-
+                        item['supplier_status'] = "You have been assigned this RFQ"
         return Response(data)
-
-
 # ── RFQ — Industrialization ───────────────────────────────────────────────────
 
 class CrearRFQView(APIView):
@@ -1074,11 +1131,24 @@ class ComparativaCotizacionesView(APIView):
 
 
 class SelectWinningSupplierView(APIView):
+    # Acceso: Purchases (normal) y Purchases_Admin, pero NO exclusivo del Admin.
+    # El Purchases normal selecciona al ganador VIRTUAL (→ Nivel 8: supplier_selected).
+    # La ratificación final la hace FalloFinalGerencialView (→ Nivel 9: rfq_closed).
     permission_classes = [IsAuthenticated, IsPurchasesUser]
 
     @transaction.atomic
     def patch(self, request, pk):
         rfq_base = get_object_or_404(RFQ_Base, pk=pk)
+
+        # Guardia de seguridad: un Purchases_Admin NO debe usar esta vista para
+        # saltar la ratificación gerencial. El admin cierra licitaciones con
+        # FalloFinalGerencialView. Un admin que llame esta vista recibe un 403.
+        grupos = list(request.user.groups.values_list('name', flat=True))
+        if 'Purchases_Admin' in grupos and 'SuperAdmin' not in grupos:
+            return Response(
+                {"error": "Los Administradores de Compras deben usar el endpoint de Fallo Gerencial para adjudicar licitaciones."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         if rfq_base.status != STATUS.WAITING_FOR_SUPPLIERS:
             return Response(
@@ -1101,7 +1171,7 @@ class SelectWinningSupplierView(APIView):
         registrar_tracking_rfq(rfq_base, STATUS.SUPPLIER_SELECTED, request.user)
 
         return Response({
-            "mensaje": "Proveedor marcado como ganador. RFQ enviado a validacion gerencial.",
+            "mensaje": "Proveedor marcado como ganador (seleccion virtual). RFQ enviado a validacion gerencial para fallo final.",
             "id_rfq": rfq_base.id_rfq,
         })
 
@@ -1516,3 +1586,20 @@ class DashboardProveedorView(APIView):
                 "win_rate_porcentaje": round(success_rate, 2),
             },
         })
+
+class IASugerenciasProveedoresView(APIView):
+    permission_classes = [IsAuthenticated, IsPurchasesUser]
+
+    def get(self, request, pk):
+        rfq = get_object_or_404(RFQ_Base, pk=pk)
+        
+        # MOCK DATA para desarrollo
+        mock_response = {
+            "predictions": [
+                {"supplier": "Sup01", "price": 258852.83, "price_low": 220014.45, "price_high": 297691.21},
+                {"supplier": "Sup02", "price": 256448.52, "price_low": 217970.88, "price_high": 294926.15},
+                {"supplier": "Sup03", "price": 254529.02, "price_low": 216339.39, "price_high": 292718.66}
+            ],
+            "message": "Predictions generated from rfq_mlp_model2.pt."
+        }
+        return Response(mock_response, status=status.HTTP_200_OK)

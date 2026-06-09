@@ -240,23 +240,64 @@ function getFieldKeys(prefix, suffix) {
     return                        [`${prefix}_Unit`,  `${prefix}_PriceUnit`, `${prefix}_Total`, `${prefix}_Weeks`];
 }
 
-// ── Cost row component ────────────────────────────────────────────────────────
+
+// ── Cost row component ─────────────────────────────────────────────────────────
+
 function CostRow({ item, data, onChange }) {
     const [k1, k2, k3, k4] = getFieldKeys(item.prefix, item.suffix);
-    const labelFor = (k) => k.replace(item.prefix + '_', '').replace('H', '/h').replace('Unit', '/unit').replace('PriceH', 'Price/h').replace('PriceUnit', 'Price/unit').replace('PriceQ', 'Price/q').replace('Q', 'Qty');
     const rowStyle = item.isTotal
         ? { backgroundColor: 'var(--background-tertiary)', fontWeight: 600 }
         : {};
 
-    const numField = (k) => (
+    // Smart change: when Qty or Price changes, recalculate Total immediately.
+    // Passes a batch object to onChange so all updates land in one setState.
+    const handleSmartChange = (key, rawValue) => {
+        const value = rawValue === '' ? null : parseFloat(rawValue);
+        if (!item.isTotal && (key === k1 || key === k2)) {
+            // Compute new total based on updated qty/price
+            const currentQty   = key === k1 ? (value ?? 0) : (parseFloat(data[k1] ?? 0) || 0);
+            const currentPrice = key === k2 ? (value ?? 0) : (parseFloat(data[k2] ?? 0) || 0);
+            const newTotal = parseFloat((currentQty * currentPrice).toFixed(4));
+            // Pass a batch object: onChange detects {key: val} shape and merges atomically
+            onChange({ [key]: value, [k3]: newTotal });
+        } else {
+            onChange(key, value);
+        }
+    };
+
+
+    const editableField = (k) => (
         <td key={k} className="px-2 py-1.5">
             <input
                 type="number"
                 step="0.01"
                 value={data[k] ?? ''}
-                onChange={e => onChange(k, e.target.value === '' ? null : parseFloat(e.target.value))}
+                onChange={e => handleSmartChange(k, e.target.value)}
                 className="w-full px-2 py-1 text-sm border border-border-default bg-surface focus:outline-none focus:ring-1 focus:ring-brand-accent"
                 style={{ color: 'var(--text-primary)' }}
+            />
+        </td>
+    );
+
+    // _Total (k3) for non-total rows is auto-calculated → show read-only with accent bg
+    const totalField = () => (
+        <td key={k3} className="px-2 py-1.5">
+            <input
+                type="number"
+                step="0.01"
+                readOnly={!item.isTotal}
+                tabIndex={!item.isTotal ? -1 : undefined}
+                value={data[k3] ?? ''}
+                onChange={item.isTotal ? (e => handleSmartChange(k3, e.target.value)) : undefined}
+                className="w-full px-2 py-1 text-sm border border-border-default focus:outline-none"
+                style={{
+                    color: 'var(--text-primary)',
+                    backgroundColor: !item.isTotal
+                        ? 'rgba(16, 185, 129, 0.07)' // subtle teal = auto-calculated
+                        : 'var(--background-tertiary)',
+                    cursor: !item.isTotal ? 'default' : undefined,
+                    fontWeight: item.isTotal ? 600 : undefined,
+                }}
             />
         </td>
     );
@@ -264,10 +305,10 @@ function CostRow({ item, data, onChange }) {
     return (
         <tr style={rowStyle} className="border-b border-border-light">
             <td className="px-3 py-1.5 text-sm" style={{ color: 'var(--text-primary)', minWidth: '200px' }}>{item.label}</td>
-            {numField(k1)}
-            {numField(k2)}
-            {numField(k3)}
-            {numField(k4)}
+            {editableField(k1)}
+            {editableField(k2)}
+            {totalField()}
+            {editableField(k4)}
         </tr>
     );
 }
@@ -533,10 +574,21 @@ export default function QuoteForm({ rfqId, rfqType, existingResponses = [], onSu
         info2: cleanSeed('info2'),
     });
 
-    const setField = (part) => (key, value) =>
-        setFormData(prev => ({ ...prev, [part]: { ...prev[part], [key]: value } }));
+    // setField supports two call signatures:
+    //   setField('p1')('MyKey', value)                  — single field
+    //   setField('p1')({ MyKey: v1, OtherKey: v2 })     — batch (atomic, avoids stale closure)
+    const setField = (part) => (keyOrUpdates, value) => {
+        if (typeof keyOrUpdates === 'object' && keyOrUpdates !== null) {
+            // Batch update: merge all key-value pairs atomically
+            setFormData(prev => ({ ...prev, [part]: { ...prev[part], ...keyOrUpdates } }));
+        } else {
+            setFormData(prev => ({ ...prev, [part]: { ...prev[part], [keyOrUpdates]: value } }));
+        }
+    };
+
 
     // ── Auto-Calculation Logic for Summary ─────────────────────────────────────────
+
     useEffect(() => {
         setFormData(prev => {
             const info1 = { ...prev.info1 };

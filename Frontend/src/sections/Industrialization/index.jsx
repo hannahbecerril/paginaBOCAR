@@ -4,6 +4,7 @@ import NavBar from '../../components/layout/NavBar';
 import CreateRFQ from './CreateRFQ';
 import AllRFQ from './AllRFQ';
 import Drafts from './Drafts';
+import PendingReview from './PendingReview';
 import Dashboard from './Dashboard';
 import Users from './Users';
 import RFQDetails from '../../components/layout/RFQDetails';
@@ -38,6 +39,7 @@ export default function IndustrializationDashboard() {
             items: [
                 { label: 'All RFQs', path: 'All-RFQ' },
                 { label: 'Drafts',   path: 'Drafts' },
+                ...(isAdmin ? [{ label: 'Pending Review', path: 'Pending-Review' }] : []),
             ],
         },
     ];
@@ -58,6 +60,7 @@ export default function IndustrializationDashboard() {
                     <Route path="Create-RFQ"       element={<CreateRFQ />} />
                     <Route path="All-RFQ"          element={<AllRFQ />} />
                     <Route path="Drafts"           element={<Drafts />} />
+                    <Route path="Pending-Review"   element={isAdmin ? <PendingReview /> : <Navigate to="Drafts" replace />} />
                     <Route path="Dashboard"        element={<Dashboard />} />
                     <Route path="Calendar"         element={<Calendar userRole="industrialization" />} />
                     <Route path="Chatbot"          element={<Chatbot  userRole="industrialization" />} />
