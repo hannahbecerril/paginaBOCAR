@@ -643,11 +643,20 @@ export default function RFQDetails() {
                                 <h3 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text-tertiary)' }}>RFQ Details</h3>
                                 {editingSection === 'stage2' ? (
                                     <div className="space-y-4">
-                                        {/* COMPONENTE DE IA INYECTADO AQUÍ */}
-                                        <div className="mb-4">
-                                            <IARecommendations rfqId={rfqData.id} />
-                                        </div>
+                                        
 
+{rfqData?.ia_predictions?.predictions ? (
+    <div className="mb-4">
+        {/* Aquí enviamos la lista tal cual */}
+        <IARecommendations data={rfqData.ia_predictions.predictions} />
+    </div>
+) : (
+    <div className="p-4 bg-yellow-50 border border-yellow-200 rounded">
+        <p className="text-sm text-yellow-700">
+            Aún no hay predicciones en el objeto (ia_predictions es: {JSON.stringify(rfqData?.ia_predictions)})
+        </p>
+    </div>
+)}
                                         {/* Metadata fields */}
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                             {Object.entries(editData.metadata || {}).map(([k, v]) => (

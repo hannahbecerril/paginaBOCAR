@@ -37,6 +37,7 @@ class RFQ_Base(models.Model):
         blank=True,
         choices=[('Low', 'Low'), ('Medium', 'Medium'), ('High', 'High'), ('Critical', 'Critical')],
     )
+    ia_predictions = models.JSONField(null=True, blank=True)
     response_deadline = models.DateField(null=True, blank=True)
     shipping_terms = models.CharField(max_length=100, blank=True)
     quality_requirements = models.TextField(blank=True)

@@ -62,7 +62,14 @@ class DIE_TRIM_I(models.Model):
     Deli_date_notes = models.CharField(max_length=500, null=True, blank=True)
     Ejec_syst_fix_notes = models.CharField(max_length=500, null=True, blank=True)
     sketch_image = models.ImageField(upload_to='die_sketches/', null=True, blank=True)
-
+    # Nuevos campos para el modelo de IA
+    part_length = models.FloatField(null=True, blank=True)
+    part_height = models.FloatField(null=True, blank=True)
+    part_depth = models.FloatField(null=True, blank=True)
+    part_weight_kg = models.FloatField(null=True, blank=True)
+    product_type = models.CharField(max_length=100, null=True, blank=True)
+    comodity = models.CharField(max_length=100, null=True, blank=True)
+    country = models.CharField(max_length=100, null=True, blank=True)
     class Meta:
         db_table = 'DIE_TRIM_I'
 

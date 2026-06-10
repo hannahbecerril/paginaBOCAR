@@ -13,6 +13,7 @@ from django.shortcuts import get_object_or_404
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.models import User
 from django.utils import timezone
+import requests
 
 from rest_framework import filters, status, viewsets, generics
 from rest_framework.views import APIView
@@ -663,6 +664,7 @@ class RFQDetailView(APIView):
             'response_deadline':    rfq.response_deadline,
             'shipping_terms':       rfq.shipping_terms,
             'quality_requirements': rfq.quality_requirements,
+            'ia_predictions': rfq.ia_predictions,
             'is_winner':    is_winner,
             'documentos':   documentos,
             'stage1': stage1,
@@ -972,15 +974,89 @@ class ReviewRFQIndView(APIView):
             )
 
         is_approved = request.data.get('is_approved')
+        print(f">>> [DEBUG] ¿Se aprobó?: {is_approved}") # CHISMOSO 1
         if is_approved is None:
             return Response({"error": "Se requiere el campo 'is_approved' (booleano)."}, status=status.HTTP_400_BAD_REQUEST)
 
         if str(is_approved).lower() in ['true', '1', 't', 'y', 'yes']:
+            print(">>> [DEBUG] Entrando a la lógica de aprobación...") # CHISMOSO 2
             if rfq_base.type == 'mold' and not MOLD_INFO_P1_I.objects.filter(id_rfq=rfq_base).exists():
                 return Response({"error": "No se puede aprobar: Faltan datos tecnicos del Molde (P1)."}, status=status.HTTP_400_BAD_REQUEST)
             if rfq_base.type == 'die' and not DIE_TRIM_I.objects.filter(id_rfq=rfq_base).exists():
                 return Response({"error": "No se puede aprobar: Faltan datos tecnicos del Troquel."}, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                print(">>> [DEBUG] Inicializando funciones de conversión...") # CHISMOSO 3
+                def safe_int(val, default=0):
+                    try: return int(float(val))
+                    except (ValueError, TypeError): return default
 
+                def safe_float(val, default=0.0):
+                    try: return float(val)
+                    except (ValueError, TypeError): return default
+
+                payload_ia = {
+                    "die_casting_machine": 0, "part_lenght": 0, "part_height": 0, "part_depth": 0, "part_weight_kg": 0.0,
+                    "total_part_weight_kg": 0.0, "projected_area_per_part_cm2": 0, "total_projected_area_cm2": 0,
+                    "no_of_cavities": 1, "plates": 0, "sliders": 0, "subcores": 0, "squeezers": 0,
+                    "total_mechanisms": 0, "inserts": 0, "jet_coolers": 0,
+                    "product_type": "Structural", "comodity": "Powertrain", "country": "Mexico"
+                }
+
+                if rfq_base.type == 'mold':
+                    detalles = MOLD_INFO_P1_I.objects.filter(id_rfq=rfq_base).first()
+                    if detalles:
+                        payload_ia["die_casting_machine"] = safe_int(detalles.Smach)
+                        payload_ia["no_of_cavities"] = safe_int(detalles.No_CAV, 1)
+                        payload_ia["sliders"] = safe_int(detalles.No_ofHS) + safe_int(detalles.No_ofMS)
+                        payload_ia["subcores"] = safe_int(detalles.No_subc)
+                        payload_ia["squeezers"] = safe_int(detalles.Spin)
+                        payload_ia["plates"] = safe_int(detalles.No_PlJcosys)
+                        payload_ia["inserts"] = safe_int(detalles.Ihtcs)
+                        payload_ia["jet_coolers"] = safe_int(detalles.Jco)
+                        payload_ia["total_mechanisms"] = payload_ia["sliders"] + payload_ia["subcores"] + payload_ia["squeezers"]
+                        
+                        payload_ia["part_lenght"] = safe_float(detalles.part_length)
+                        payload_ia["part_height"] = safe_float(detalles.part_height)
+                        payload_ia["part_depth"] = safe_float(detalles.part_depth)
+                        payload_ia["part_weight_kg"] = safe_float(detalles.part_weight_kg)
+                        payload_ia["total_part_weight_kg"] = payload_ia["part_weight_kg"] * payload_ia["no_of_cavities"]
+                        payload_ia["product_type"] = detalles.product_type or "Structural"
+                        payload_ia["comodity"] = detalles.comodity or "Powertrain"
+                        payload_ia["country"] = detalles.country or "Mexico"
+
+                elif rfq_base.type == 'die':
+                    detalles = DIE_TRIM_I.objects.filter(id_rfq=rfq_base).first()
+                    if detalles:
+                        payload_ia["die_casting_machine"] = safe_int(detalles.Press)
+                        payload_ia["no_of_cavities"] = safe_int(detalles.No_cavities, 1)
+                        payload_ia["sliders"] = safe_int(detalles.No_hydra_slides)
+                        payload_ia["total_mechanisms"] = payload_ia["sliders"]
+                        payload_ia["projected_area_per_part_cm2"] = safe_float(detalles.PROJ_L)
+                        payload_ia["total_projected_area_cm2"] = payload_ia["projected_area_per_part_cm2"] * payload_ia["no_of_cavities"]
+                        
+                        payload_ia["part_lenght"] = safe_float(detalles.part_length)
+                        payload_ia["part_height"] = safe_float(detalles.part_height)
+                        payload_ia["part_depth"] = safe_float(detalles.part_depth)
+                        payload_ia["part_weight_kg"] = safe_float(detalles.part_weight_kg)
+                        payload_ia["total_part_weight_kg"] = payload_ia["part_weight_kg"] * payload_ia["no_of_cavities"]
+                        payload_ia["product_type"] = detalles.product_type or "Structural"
+                        payload_ia["comodity"] = detalles.comodity or "Powertrain"
+                        payload_ia["country"] = detalles.country or "Mexico"
+                print(">>> [DEBUG] Payload preparado para IA:", payload_ia) # CHISMOSO 4
+                # Llamada POST a tu modelo en AWS
+                ia_response = requests.post("http://ec2-54-226-35-6.compute-1.amazonaws.com:8000/predictions", json=payload_ia, timeout=15)
+                print(">>> [DEBUG] AWS Respondió con Status:", ia_response.status_code) # CHISMOSO 5
+                if ia_response.status_code == 200:
+                    rfq_base.ia_predictions = ia_response.json()
+                    print(">>> [DEBUG] ¡Éxito! Predicciones guardadas:", rfq_base.ia_predictions) # CHISMOSO 6
+                else:
+                    print("Error de IA HTTP:", ia_response.status_code)
+                    print(">>> [ERROR] La IA devolvió error:", ia_response.text)
+                    
+            except Exception as e:
+                # Si la IA falla (caída del servidor, timeout), no detenemos el flujo, 
+                # simplemente no guardamos predicciones y el RFQ avanza.
+                print("Error de red al consultar IA:", str(e))
             rfq_base.status = STATUS.SENT_TO_PURCHASES
             rfq_base.submitted_for_review = False
             rfq_base.save()

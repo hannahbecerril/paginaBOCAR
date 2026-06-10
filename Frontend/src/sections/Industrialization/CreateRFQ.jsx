@@ -4,7 +4,7 @@ import Button from '../../components/ui/Button';
 import UploadCard from '../../components/ui/UploadCard';
 import { CheckCircle, AlertCircle, ChevronRight, ChevronLeft, Save, Send, RefreshCw } from 'lucide-react';
 import { getRFQFormConfig, uploadDocument, createRFQ } from '../api';
-
+import { IA_CATALOGS } from '../../constants/iaCatalogs';
 // ── Sub-componentes del formulario ────────────────────────────────────────────
 function SectionTitle({ children }) {
     return (
@@ -291,8 +291,7 @@ export default function RFQForm() {
                         {feedback.message}
                     </div>
                 )}
-
-                {/* ── STEP 1: GENERAL INFO ── */}
+           {/* ── STEP 1: GENERAL INFO ── */}
                 {step === 1 && (
                     <div className="bg-surface border border-border-default p-6">
                         <SectionTitle>General Information</SectionTitle>
@@ -314,6 +313,72 @@ export default function RFQForm() {
                                 options={options.toolType}
                                 required
                             />
+
+                            {/* ── TECHNICAL DIMENSIONS & ML DATA ── */}
+                            {general.type && (
+                                <div className="md:col-span-2 mt-4 pt-6 border-t border-border-default">
+                                    <SectionTitle>Technical Dimensions & Specifications</SectionTitle>
+                                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                        <div>
+                                            <label className="text-xs uppercase text-text-tertiary mb-1 block">Part Length (mm)</label>
+                                            <Input type="number" 
+                                                value={general.type === 'mold' ? (moldP1?.part_length || '') : (dieTrim?.part_length || '')} 
+                                                onChange={(e) => general.type === 'mold' ? setMoldField('part_length', e.target.value) : setDieField('part_length', e.target.value)} 
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs uppercase text-text-tertiary mb-1 block">Part Height (mm)</label>
+                                            <Input type="number" 
+                                                value={general.type === 'mold' ? (moldP1?.part_height || '') : (dieTrim?.part_height || '')} 
+                                                onChange={(e) => general.type === 'mold' ? setMoldField('part_height', e.target.value) : setDieField('part_height', e.target.value)} 
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs uppercase text-text-tertiary mb-1 block">Part Depth (mm)</label>
+                                            <Input type="number" 
+                                                value={general.type === 'mold' ? (moldP1?.part_depth || '') : (dieTrim?.part_depth || '')} 
+                                                onChange={(e) => general.type === 'mold' ? setMoldField('part_depth', e.target.value) : setDieField('part_depth', e.target.value)} 
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs uppercase text-text-tertiary mb-1 block">Part Weight (kg)</label>
+                                            <Input type="number" 
+                                                value={general.type === 'mold' ? (moldP1?.part_weight_kg || '') : (dieTrim?.part_weight_kg || '')} 
+                                                onChange={(e) => general.type === 'mold' ? setMoldField('part_weight_kg', e.target.value) : setDieField('part_weight_kg', e.target.value)} 
+                                            />
+                                        </div>
+
+                                        {/* Dropdowns */}
+                                        <div className="md:col-span-1">
+                                            <label className="text-xs uppercase text-text-tertiary mb-1 block">Product Type</label>
+                                            <select className="w-full px-3 py-2 text-sm border border-border-default rounded bg-surface focus:ring-1 focus:ring-brand-accent outline-none"
+                                                value={general.type === 'mold' ? (moldP1?.product_type || '') : (dieTrim?.product_type || '')}
+                                                onChange={(e) => general.type === 'mold' ? setMoldField('product_type', e.target.value) : setDieField('product_type', e.target.value)}>
+                                                <option value="">Select...</option>
+                                                {IA_CATALOGS.productTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="md:col-span-1">
+                                            <label className="text-xs uppercase text-text-tertiary mb-1 block">Commodity</label>
+                                            <select className="w-full px-3 py-2 text-sm border border-border-default rounded bg-surface focus:ring-1 focus:ring-brand-accent outline-none"
+                                                value={general.type === 'mold' ? (moldP1?.comodity || '') : (dieTrim?.comodity || '')}
+                                                onChange={(e) => general.type === 'mold' ? setMoldField('comodity', e.target.value) : setDieField('comodity', e.target.value)}>
+                                                <option value="">Select...</option>
+                                                {IA_CATALOGS.comodities.map(c => <option key={c} value={c}>{c}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="md:col-span-2">
+                                            <label className="text-xs uppercase text-text-tertiary mb-1 block">Country</label>
+                                            <select className="w-full px-3 py-2 text-sm border border-border-default rounded bg-surface focus:ring-1 focus:ring-brand-accent outline-none"
+                                                value={general.type === 'mold' ? (moldP1?.country || '') : (dieTrim?.country || '')}
+                                                onChange={(e) => general.type === 'mold' ? setMoldField('country', e.target.value) : setDieField('country', e.target.value)}>
+                                                <option value="">Select...</option>
+                                                {IA_CATALOGS.countries.map(c => <option key={c} value={c}>{c}</option>)}
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
@@ -461,7 +526,6 @@ export default function RFQForm() {
                         </div>
                     </div>
                 )}
-
                 {/* ── STEP 3: REQUIRED DATA + FILES ── */}
                 {step === 3 && (
                     <div className="space-y-4">

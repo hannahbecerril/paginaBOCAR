@@ -108,6 +108,7 @@ function normalizeRFQ(r) {
         createdBy: r.created_by ?? '',
         is_winner: r.is_winner ?? null,
         detalles_tecnicos: r.detalles_tecnicos ?? {},
+        ia_predictions: r.ia_predictions ?? null,
         // stage1 carries completionPercentage injected by _inject_detalles on the backend
         stage1: { data: { completionPercentage: r.completion_percentage ?? 0 } },
         // Synthetic stage3 so components can read responses.length for offers count
@@ -136,6 +137,8 @@ function normalizeRFQDetail(r) {
         lastModified: r.modified_date ? r.modified_date.split('T')[0] : null,
         createdBy: r.created_by ?? '',
         is_winner: r.is_winner ?? null,
+        ia_predictions: r.ia_predictions ?? null,   // ← AGREGAR ESTA LÍNEA
+
         response_deadline: r.response_deadline ?? null,
         shipping_terms: r.shipping_terms ?? '',
         quality_requirements: r.quality_requirements ?? '',

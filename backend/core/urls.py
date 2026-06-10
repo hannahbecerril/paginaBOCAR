@@ -90,7 +90,6 @@ urlpatterns = [
     path('api/rfqs/<int:pk>/seleccionar-proveedor/', SelectWinningSupplierView.as_view(),        name='rfqs-seleccionar-alias'),
     path('api/rfq/<int:pk>/fallo-gerencial/',        FalloFinalGerencialView.as_view(),          name='rfq-fallo-gerencial'),
     path('api/rfqs/<int:pk>/fallo-gerencial/',       FalloFinalGerencialView.as_view(),          name='rfqs-fallo-alias'),
-    path('api/rfqs/<int:pk>/ia-recomendaciones/',    IASugerenciasProveedoresView.as_view(),     name='ia-recomendaciones'), # <--- RUTA DE IA AQUÍ
 
     # ── RFQ — Supplier Portal ─────────────────────────────────────────────
     path('api/rfq/buzon-proveedor/',       BuzonProveedorListView.as_view(),   name='rfq-buzon-proveedor'),
