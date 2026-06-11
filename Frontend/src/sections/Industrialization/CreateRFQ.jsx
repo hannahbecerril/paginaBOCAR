@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import Input from '../../components/ui/Input';
 import Button from '../../components/ui/Button';
 import UploadCard from '../../components/ui/UploadCard';
-import { CheckCircle, AlertCircle, ChevronRight, ChevronLeft, Save, Send, RefreshCw } from 'lucide-react';
+import { Check, CheckCircle, AlertCircle, ChevronRight, ChevronLeft, Save, Send, RefreshCw } from 'lucide-react';
 import { getRFQFormConfig, uploadDocument, createRFQ } from '../api';
 import { IA_CATALOGS } from '../../constants/iaCatalogs';
 // ── Sub-componentes del formulario ────────────────────────────────────────────
@@ -52,7 +52,7 @@ export default function RFQForm() {
     const [formConfig, setFormConfig] = useState(null);
 
     // Step 1 - General
-    const [general, setGeneral] = useState({ tool: '', type: '' });
+    const [general, setGeneral] = useState({ tool: '', type: '', priority: '' });
 
     // Step 2 - Die data
     const [dieTrim, setDieTrim] = useState(null);
@@ -107,7 +107,7 @@ export default function RFQForm() {
     };
 
     const buildPayload = (isDraft) => {
-        const base = { tool: general.tool, type: general.type, is_draft: isDraft };
+        const base = { tool: general.tool, type: general.type, priority: general.priority, is_draft: isDraft };
         if (general.type === 'die') {
             return { ...base, die_trim: { ...dieTrim, ...flattenBooleans(dieBooleans) } };
         }
@@ -208,7 +208,7 @@ export default function RFQForm() {
             if (!isDraft) {
                 setTimeout(() => {
                     setStep(1);
-                    setGeneral({ tool: '', type: '' });
+                    setGeneral({ tool: '', type: '', priority: '' });
                     setDieTrim(JSON.parse(JSON.stringify(formConfig.defaults.dieTrim)));
                     setDieBooleans(JSON.parse(JSON.stringify(formConfig.defaults.dieBooleans)));
                     setMoldP1(JSON.parse(JSON.stringify(formConfig.defaults.moldP1)));
@@ -265,7 +265,7 @@ export default function RFQForm() {
                                 <div className="flex items-center gap-2">
                                     <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0
                                         ${done ? 'bg-brand-success text-white' : active ? 'bg-brand-primary text-white' : 'bg-surface-active text-text-tertiary border border-border-default'}`}>
-                                        {done ? '✓' : n}
+                                        {done ? <Check size={14} strokeWidth={3} /> : n}
                                     </div>
                                     <span className={`text-xs font-medium hidden sm:block ${active ? 'text-text-primary' : 'text-text-tertiary'}`}>
                                         {label}
@@ -313,6 +313,26 @@ export default function RFQForm() {
                                 options={options.toolType}
                                 required
                             />
+
+                            {/* Priority */}
+                            <div>
+                                <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-tertiary)' }}>
+                                    Priority
+                                </label>
+                                <select
+                                    id="rfq-priority"
+                                    value={general.priority}
+                                    onChange={e => setGeneral(p => ({ ...p, priority: e.target.value }))}
+                                    className="w-full px-3 py-2 text-sm border border-border-default bg-surface focus:ring-1 focus:ring-brand-accent outline-none transition-all"
+                                    style={{ color: general.priority ? 'var(--text-primary)' : 'var(--text-tertiary)' }}
+                                >
+                                    <option value="">Select priority…</option>
+                                    <option value="Low">Low</option>
+                                    <option value="Medium">Medium</option>
+                                    <option value="High">High</option>
+                                    <option value="Critical">Critical</option>
+                                </select>
+                            </div>
 
                             {/* ── TECHNICAL DIMENSIONS & ML DATA ── */}
                             {general.type && (

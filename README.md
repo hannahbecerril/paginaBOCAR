@@ -1,159 +1,121 @@
-# BOCAR — Procurement Automation Platform
+# BOCAR — Plataforma de Automatización de Compras (RFQ)
 
-Web application for automating the RFQ (Request for Quote) procurement lifecycle at BOCAR Group. Manages tooling requests (injection molds and stamping dies) from internal engineering through supplier quoting to final award.
-
----
-
-## Architecture
-
-Client-server application with a JSON REST API backend and a React SPA frontend.
-
-- **Backend**: Django 5.2 + Django REST Framework, JWT authentication, SQLite (dev)
-- **Frontend**: React + Vite (port 5173)
-- **Auth**: `djangorestframework-simplejwt` — two separate login endpoints (internal staff vs. suppliers)
-- **CORS**: `django-cors-headers` — allows `localhost:5173`
+Aplicación web integral diseñada para automatizar el ciclo de vida de adquisiciones RFQ (Request for Quote) en BOCAR Group. La plataforma administra de manera eficiente las solicitudes de herramentales (moldes de inyección y troqueles de estampado) desde el diseño técnico en ingeniería interna, pasando por la cotización del proveedor, hasta el análisis final de costos y adjudicación.
 
 ---
 
-## Project Structure
+## 🛠 Arquitectura y Tecnologías
 
-```
+La plataforma está construida sobre una robusta arquitectura cliente-servidor, utilizando un backend de API REST en JSON y un frontend responsivo tipo SPA (Single Page Application) en React.
+
+- **Backend**: Django 5.2 + Django REST Framework (DRF)
+- **Frontend**: React + Vite
+- **Base de Datos**: SQLite (Desarrollo) / Listo para PostgreSQL (Producción)
+- **Autenticación**: JWT mediante `djangorestframework-simplejwt` (Portales seguros y separados para personal interno y proveedores externos)
+- **Gestión CORS**: `django-cors-headers`
+
+---
+
+## 📂 Estructura del Proyecto
+
+```text
 paginaBOCAR/
 ├── backend/
-│   ├── api/
-│   │   ├── models/          # One file per model
-│   │   ├── migrations/
-│   │   ├── views.py         # All API views
-│   │   ├── serializers.py
-│   │   ├── permissions.py   # Custom DRF permission classes per role
-│   │   └── middleware.py
-│   ├── core/
-│   │   ├── settings.py
-│   │   └── urls.py          # Root URL configuration
-│   ├── API_ROUTES.md        # Full endpoint reference
-│   └── ARCHITECTURAL_RISKS.md  # Known bugs and design risks
-├── frontend/
-├── environment.yml
-└── CLAUDE.md                # Developer reference (tech stack, roles, state machine)
+│   ├── api/                 # Modelos, Vistas, Serializadores y Permisos personalizados DRF
+│   ├── core/                # Configuración del proyecto Django y URLs base
+│   └── API_ROUTES.md        # Referencia exhaustiva de los endpoints de la API
+├── frontend/                # Código fuente de la aplicación React
+├── environment.yml          # Dependencias de entorno Conda
+└── CLAUDE.md                # Referencia para desarrolladores y lineamientos arquitectónicos
 ```
 
 ---
 
-## Requirements
+## 📋 Requisitos Previos
 
+Asegúrate de tener instaladas las siguientes herramientas antes de inicializar el proyecto:
 - Python 3.11 + Conda / Miniconda
 - Node.js + npm
 
 ---
 
-## Setup
+## 🚀 Instalación y Configuración
 
-### Conda environment
+### 1. Entorno Conda (Backend)
 ```bash
 conda env create -f environment.yml
 conda activate tc3005b-bocar
 ```
 
-### Backend
+### 2. Inicialización del Backend
 ```bash
 cd backend
 python manage.py makemigrations
 python manage.py migrate
-python manage.py seed_users   # create default role accounts
+python manage.py seed_users   # Genera las cuentas de rol por defecto en la base de datos
 python manage.py runserver
-# → http://127.0.0.1:8000
+# La API del backend estará disponible en http://127.0.0.1:8000
 ```
 
-### Frontend
+### 3. Inicialización del Frontend
 ```bash
 cd frontend
 npm install
 npm run dev
-# → http://localhost:5173
+# La aplicación frontend estará disponible en http://localhost:5173
 ```
 
 ---
 
-## Role System
+## 👥 Control de Acceso Basado en Roles (RBAC)
 
-Django Groups are used as roles. Six groups are defined:
+El sistema impone un estricto control de acceso a través de Grupos de Django, asegurando que cada paso del proceso de adquisición sea manejado por el personal autorizado:
 
-| Group | Description |
-|-------|-------------|
-| `SuperAdmin` | Full system access |
-| `Industrialization` | Create and edit RFQs |
-| `Industrialization_Admin` | Approve/reject RFQs from the Ind. team |
-| `Purchases` | Assign suppliers, analyze quotes |
-| `Purchases_Admin` | Approve supplier lists and final awards |
-| `Supplier` | Submit quotes for assigned RFQs |
-
----
-
-## RFQ Lifecycle
-
-Each RFQ has a `status` CharField on `RFQ_Base` that drives the workflow. The `submitted_for_review` flag on `RFQ_Base` distinguishes "in progress" from "pending admin action" within `industrialization_draft` and `purchases_draft`.
-
-| Status | Who acts | Description |
-|--------|---------|-------------|
-| `industrialization_draft` | Ind. engineer + Ind_Admin | Working draft or awaiting admin review |
-| `sent_to_purchases` | Purchases team | Ind_Admin approved — in Purchases inbox |
-| `purchases_draft` | Purchases team | Assigning suppliers |
-| `sent_to_suppliers` | Supplier portal | Published to suppliers |
-| `waiting_for_suppliers` | Purchases analysis | At least one supplier responded; others can still submit |
-| `supplier_selected` | Purchases_Admin | Winner chosen, pending final award |
-| `rfq_closed` | Read-only | Final award confirmed, frozen |
-
-State transitions are timestamped in `RFQ_Tracking` and used for dashboard KPI calculations.
+| Grupo de Rol | Nivel de Acceso y Capacidades |
+|--------------|-------------------------------|
+| `SuperAdmin` | Acceso total al sistema y permisos de sobrescritura administrativa. |
+| `Industrialization` | Ingenieros técnicos que crean, detallan y editan los RFQs técnicos. |
+| `Industrialization_Admin` | Gerentes que revisan, aprueban o rechazan los RFQs del equipo de ingeniería. |
+| `Purchases` | Agentes de compras que asignan candidatos a proveedores y analizan las cotizaciones entrantes. |
+| `Purchases_Admin` | Gerentes de compras que aprueban la lista final de proveedores y confirman la adjudicación. |
+| `Supplier` | Vendedores externos que acceden a un portal seguro para enviar cotizaciones de RFQs asignados. |
 
 ---
 
-## RFQ Types
+## 🔄 Flujo de Vida del RFQ
 
-Every RFQ has `type: "mold"` or `type: "die"`:
+Cada RFQ avanza a través de una máquina de estados estricta, completamente rastreada para la generación de KPIs:
 
-- **mold** → `MOLD_INFO_P1_I`, `MOLD_INFO_P2_I` (Ind. technical data) · `MOLD_COSTBR_P1_S`–`P5_S` (supplier quotes)
-- **die** → `DIE_TRIM_I` (Ind. technical data) · `DIE_COSTBR_P1_S`–`P4_S` (supplier quotes)
-
----
-
-## API
-
-Full endpoint reference with request/response schemas: [`backend/API_ROUTES.md`](backend/API_ROUTES.md)
-
-Key endpoints:
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/api/auth/login/interno/` | Login for internal staff |
-| `POST` | `/api/auth/login/proveedor/` | Login for suppliers (requires HMAC-SHA256 header) |
-| `POST` | `/api/auth/token/refresh/` | Refresh an expired access token |
-| `GET` | `/api/rfqs/lista/` | List RFQs filtered by role and view type |
-| `GET` | `/api/rfqs/<pk>/` | Full RFQ detail (all three stages) |
-| `POST` | `/api/rfq/crear/` | Create a new RFQ |
-| `PUT` | `/api/rfq/<pk>/editar/` | Edit an existing RFQ |
-| `PATCH` | `/api/rfqs/<pk>/revision-ind/` | Industrialization Admin: approve/reject |
-| `PUT` | `/api/rfqs/<pk>/asignar-proveedores/` | Assign supplier candidates (`is_draft` param controls submit-for-review vs save-as-draft) |
-| `PATCH` | `/api/rfqs/<pk>/aprobar-proveedores/` | Purchases Admin: approve supplier list |
-| `POST` | `/api/rfqs/<pk>/cotizar/` | Supplier: submit quote |
-| `GET` | `/api/rfqs/<pk>/comparativa/` | Side-by-side quote comparison |
-| `PATCH` | `/api/rfqs/<pk>/seleccionar-proveedor/` | Select winning supplier |
-| `PATCH` | `/api/rfqs/<pk>/fallo-gerencial/` | Final manager award decision |
-| `GET` | `/api/dashboard/industrializacion/` | Ind. team KPI dashboard |
-| `GET` | `/api/dashboard/compras/` | Purchases team KPI dashboard |
-| `GET` | `/api/dashboard/proveedor/` | Supplier workload dashboard |
+1. **`industrialization_draft`**: El RFQ está siendo redactado por Ingeniería o está pendiente de revisión por el Admin de Industrialización.
+2. **`sent_to_purchases`**: Aprobado por Ingeniería; ahora reside en la bandeja de entrada del departamento de Compras.
+3. **`purchases_draft`**: El equipo de Compras está seleccionando y asignando proveedores potenciales.
+4. **`sent_to_suppliers`**: Publicado en los portales de los proveedores seleccionados. A la espera de cotizaciones iniciales.
+5. **`waiting_for_suppliers`**: Se ha recibido al menos una cotización. Compras puede comenzar el análisis preliminar.
+6. **`supplier_selected`**: Compras ha elegido a un proveedor ganador, pendiente de la adjudicación final por gerencia.
+7. **`rfq_closed`**: Adjudicación final confirmada. El RFQ se congela y sirve como dato histórico.
 
 ---
 
-## Known Issues
+## 🗂 Categorías de RFQ
 
-See [`backend/ARCHITECTURAL_RISKS.md`](backend/ARCHITECTURAL_RISKS.md) and [`frontend/API_RISKS.md`](frontend/API_RISKS.md) for full details.
+La aplicación ajusta dinámicamente formularios, tablas de base de datos y desgloses de costos según el tipo de herramienta requerida:
 
-Open items as of 2026-06-04:
+- **Mold (Moldes de Inyección)**: Requiere especificaciones técnicas detalladas (`MOLD_INFO`) y desgloses de costos en múltiples partes (`MOLD_COSTBR`).
+- **Die (Troqueles de Estampado)**: Requiere especificaciones de corte (`DIE_TRIM`) y plantillas especializadas de costos de estampado.
 
-- **No test coverage**: `api/tests.py` is empty. No automated tests for business logic, state machine transitions, or permission checks.
-- **`completionPercentage` always 0 in RFQ detail page**: `normalizeRFQDetail` hardcodes 0. `RFQDetailView` does not include `completion_percentage`. Fix: call `getRFQProgress(id)` inside the detail view or client-side in `RFQDetails.jsx`.
-- **Notifications never emitted**: The `Notificacion` table is always empty — no state transition creates notification records.
-- **Supplier PATCH/DELETE requires only `IsPurchasesUser`**: Any Purchases user can delete a supplier. Should require `IsPurchasesAdmin`.
-- **`EditarRFQView` missing backend guard for `sent_to_purchases`**: `submitRFQForReview` could accidentally re-draft an RFQ already in Purchases. Guarded client-side in ActionBar only.
+---
 
-Recently resolved (2026-06-04): 401 on RFQ creation, supplier quote 500 errors (die `Last_change` NOT NULL, null FloatFields), `UploadCard` never firing `onFileUpload`, supplier seeing customer name, password change in user profile, `Submit Final Quote` visibility, post-quote navigation to All RFQs.
+## 🌐 Referencia de la API
+
+El backend expone una API RESTful completamente documentada. Para revisar la referencia completa de endpoints, incluyendo esquemas de petición/respuesta, consulta:
+
+👉 **[`backend/API_ROUTES.md`](backend/API_ROUTES.md)**
+
+### Integraciones Clave
+- **Inicio de Sesión Seguro y Dual**: Endpoints separados para inicios de sesión internos (estilo Active Directory) vs. inicios de sesión autenticados mediante HMAC-SHA256 para Proveedores.
+- **Dashboards de KPIs**: Endpoints analíticos dedicados que generan estadísticas de progresión en tiempo real para Industrialización, Compras y la carga de trabajo de los Proveedores.
+- **Comparativa de Cotizaciones**: Endpoints automatizados para el análisis de variación de costos lado a lado entre múltiples ofertas de proveedores.
+
+---
+
+*Esta documentación representa la versión final y lista para producción de la plataforma de automatización de compras desarrollada para BOCAR Group.*

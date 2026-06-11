@@ -78,7 +78,7 @@ export default function PendingReview() {
                 const busy = actionLoading === row.id;
                 return (
                     <div className="flex gap-2" onClick={e => e.stopPropagation()}>
-                        {/* ✅ Approve: envía a Compras */}
+                        {/* Approve: envía a Compras */}
                         <button
                             disabled={busy}
                             onClick={() => handleSendToPurchases(row.id)}
@@ -91,9 +91,9 @@ export default function PendingReview() {
                                 cursor: busy ? 'not-allowed' : 'pointer',
                             }}
                         >
-                            {busy ? '…' : '✓ Approve'}
+                            {busy ? '…' : 'Approve'}
                         </button>
-                        {/* ↩ Return: regresa al ingeniero */}
+                        {/* Return: regresa al ingeniero */}
                         <button
                             disabled={busy}
                             onClick={() => handleReturnToDraft(row.id)}
@@ -106,7 +106,7 @@ export default function PendingReview() {
                                 cursor: busy ? 'not-allowed' : 'pointer',
                             }}
                         >
-                            {busy ? '…' : '↩ Return'}
+                            {busy ? '…' : 'Return'}
                         </button>
                     </div>
                 );

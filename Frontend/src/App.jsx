@@ -7,6 +7,7 @@ import Login from './sections/Login';
 import PurchasesDashboard from './sections/Purchases';
 import IndustrializationDashboard from './sections/Industrialization';
 import SuppliersDashboard from './sections/Suppliers';
+import SuperAdminDashboard from './sections/SuperAdmin';
 
 // ── Inner app — has access to NotificationContext ─────────────────────────────
 function AppContent() {
@@ -45,7 +46,7 @@ function AppContent() {
     } else if (rol === 'Supplier') {
       redirectPath = '/Suppliers';
     } else if (rol === 'SuperAdmin') {
-      redirectPath = '/Industrialization';
+      redirectPath = '/SuperAdmin';
     }
     navigate(redirectPath);
   };
@@ -71,7 +72,11 @@ function AppContent() {
 
   const ProtectedRoute = ({ children, allowedRoles }) => {
     if (!userRole) return <Navigate to="/Login" replace />;
-    const normalizedRole = userRole.replace('_Admin', '');
+    // Strip '_Admin' suffix only from compound roles (e.g. 'Industrialization_Admin' → 'Industrialization').
+    // 'SuperAdmin' must remain unchanged — it does not follow the _Admin suffix pattern.
+    const normalizedRole = userRole.endsWith('_Admin') && userRole !== 'SuperAdmin'
+      ? userRole.replace('_Admin', '')
+      : userRole;
     if (!allowedRoles.includes(normalizedRole)) {
       return (
         <div className="p-10 text-center">
@@ -112,11 +117,19 @@ function AppContent() {
         }
       />
 
-      <Route
-        path="/Suppliers/*"
+      <Route path="/Suppliers/*"
         element={
           <ProtectedRoute allowedRoles={['Supplier']}>
             <SuppliersDashboard />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/SuperAdmin/*"
+        element={
+          <ProtectedRoute allowedRoles={['SuperAdmin']}>
+            <SuperAdminDashboard />
           </ProtectedRoute>
         }
       />

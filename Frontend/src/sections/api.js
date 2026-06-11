@@ -10,6 +10,19 @@ const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
 // Exported as a plain object so context/components can use it synchronously.
 export const NOTIFICATION_CATEGORIES = notificationConfigData.categories;
 
+/**
+ * Available internal roles — must match Django Group names exactly.
+ * Used by UserManagement.jsx to populate the role dropdown.
+ */
+export const INTERNAL_ROLES = [
+    { value: 'SuperAdmin',            label: 'Super Admin' },
+    { value: 'Industrialization_Admin', label: 'Industrialization Admin' },
+    { value: 'Industrialization',     label: 'Industrialization Engineer' },
+    { value: 'Purchases_Admin',       label: 'Purchases Admin' },
+    { value: 'Purchases',             label: 'Purchases Buyer' },
+    { value: 'Supplier',              label: 'Supplier' },
+];
+
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
 
 function authHeaders() {
@@ -137,7 +150,7 @@ function normalizeRFQDetail(r) {
         lastModified: r.modified_date ? r.modified_date.split('T')[0] : null,
         createdBy: r.created_by ?? '',
         is_winner: r.is_winner ?? null,
-        ia_predictions: r.ia_predictions ?? null,   // ← AGREGAR ESTA LÍNEA
+        ia_predictions: r.ia_predictions ?? null,
 
         response_deadline: r.response_deadline ?? null,
         shipping_terms: r.shipping_terms ?? '',
@@ -194,17 +207,26 @@ function normalizeRFQDetail(r) {
 }
 
 function normalizeUser(u) {
-    const fullName = [u.first_name, u.last_name].filter(Boolean).join(' ');
+    // Supports both UsuarioReadSerializer and UsuarioAdminReadSerializer shapes.
+    const fullName = (u.full_name
+        ?? [u.first_name, u.last_name].filter(Boolean).join(' ')
+    ) || u.username;
     return {
-        id: u.id,
-        name: fullName || u.username,
-        username: u.username,
-        email: u.email ?? '',
-        role: u.grupos?.[0] ?? '',
-        department: u.department ?? u.grupos?.[0] ?? '',
-        status: u.is_active ? 'active' : 'inactive',
-        lastLogin: u.last_login ? u.last_login.split('T')[0] : null,
-        createdAt: null,
+        id:         u.id,
+        name:       fullName,
+        username:   u.username,
+        firstName:  u.first_name ?? '',
+        lastName:   u.last_name ?? '',
+        email:      u.email ?? '',
+        role:       u.grupos?.[0] ?? '',
+        grupos:     u.grupos ?? [],
+        department: u.department ?? u.area ?? u.grupos?.[0] ?? '',
+        area:       u.area ?? u.department ?? u.grupos?.[0] ?? '',
+        is_active:  u.is_active ?? true,
+        status:     u.is_active ? 'active' : 'inactive',
+        isSuperuser: u.is_superuser ?? false,
+        lastLogin:  u.last_login  ? u.last_login.split('T')[0]  : null,
+        dateJoined: u.date_joined ? u.date_joined.split('T')[0] : null,
         recentActivity: [],
         permissions: u.grupos ?? [],
     };
@@ -430,6 +452,11 @@ export async function createUser(data) {
 }
 
 export async function updateUser(id, data) {
+    /**
+     * PATCH /api/usuarios/<id>/
+     * Supported keys: first_name, last_name, email, rol, is_active, password
+     * All keys are optional — only send what changed.
+     */
     const u = await apiFetch(`/api/usuarios/${id}/`, {
         method: 'PATCH',
         body: JSON.stringify(data),
@@ -439,6 +466,23 @@ export async function updateUser(id, data) {
 
 export async function deleteUser(id) {
     return apiFetch(`/api/usuarios/${id}/`, { method: 'DELETE' });
+}
+
+/**
+ * deactivateUser  (soft-delete / toggle is_active)
+ * Calls PUT /api/usuarios/<id>/estado/ — SuperAdmin only.
+ * @param {number} id
+ * @param {boolean} isActive  true = reactivate, false = deactivate
+ * @returns {Promise<NormalizedUser>}  The updated user object.
+ */
+export async function deactivateUser(id, isActive) {
+    const payload = await apiFetch(`/api/usuarios/${id}/estado/`, {
+        method: 'PUT',
+        body: JSON.stringify({ is_active: isActive }),
+    });
+    // The endpoint wraps the user in { mensaje, usuario }
+    const raw = payload.usuario ?? payload;
+    return normalizeUser(raw);
 }
 
 export async function resetUserPassword(id) {

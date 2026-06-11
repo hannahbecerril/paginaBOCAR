@@ -79,7 +79,7 @@ const MOLD_P3_ENGINEERING = [
     { prefix: 'Simulation',            label: 'Simulation',         suffix: 'h' },
     { prefix: 'OthersEngAndDesign',    label: 'Others (Engineering)',suffix: 'h' },
     { prefix: 'TotalEngAndDesign',     label: 'TOTAL ENGINEERING',  suffix: 'h', isTotal: true },
-    { prefix: 'GrandTotalManufacCost', label: '★ GRAND TOTAL MFG',  suffix: 'h', isTotal: true },
+    { prefix: 'GrandTotalManufacCost', label: 'GRAND TOTAL MFG',  suffix: 'h', isTotal: true },
 ];
 
 const MOLD_P4_CORRECTIONS = [

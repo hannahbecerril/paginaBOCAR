@@ -446,7 +446,7 @@ export default function RFQDetails() {
                         <div><span className="text-xs uppercase tracking-wider block" style={{ color: 'var(--text-tertiary)' }}>For Review</span>{rfqData.submitted_for_review ? 'Yes' : 'No'}</div>
                         {rfqData.is_winner !== null && rfqData.is_winner !== undefined && (
                             <div><span className="text-xs uppercase tracking-wider block" style={{ color: 'var(--text-tertiary)' }}>Your Bid</span>
-                                {rfqData.is_winner ? '✅ Selected' : '❌ Not selected'}
+                                {rfqData.is_winner ? 'Selected' : 'Not selected'}
                             </div>
                         )}
                     </div>
@@ -631,7 +631,7 @@ export default function RFQDetails() {
                                                 <td className="px-3 py-2 text-sm">
                                                     <span className="px-2 py-0.5 text-xs border" style={getStatusBadgeStyle(s.status)}>{s.status}</span>
                                                 </td>
-                                                <td className="px-3 py-2 text-sm">{s.has_responded ? '✅' : '—'}</td>
+                                                <td className="px-3 py-2 text-sm">{s.has_responded ? 'Yes' : '—'}</td>
                                                 <td className="px-3 py-2 text-sm">{s.deadline || '—'}</td>
                                             </tr>
                                         ))}
@@ -680,7 +680,7 @@ export default function RFQDetails() {
                                             <h4 className="text-xs font-semibold uppercase tracking-wider mb-2 flex items-center justify-between" style={{ color: 'var(--text-tertiary)' }}>
                                                 Assign Suppliers
                                                 <span className="normal-case font-normal" style={{ color: (editData.supplierIds ?? []).length === 0 ? 'var(--brand-danger)' : 'var(--status-active)' }}>
-                                                    {(editData.supplierIds ?? []).length === 0 ? '⚠ At least one supplier required' : `${(editData.supplierIds ?? []).length} selected`}
+                                                    {(editData.supplierIds ?? []).length === 0 ? 'At least one supplier required' : `${(editData.supplierIds ?? []).length} selected`}
                                                 </span>
                                             </h4>
 
@@ -914,13 +914,13 @@ function ActionBar({ rfqData, userRole, isAdmin, loading, onAction }) {
         if (status === STATUS.IND_DRAFT && submitted_for_review && !isAdmin) {
             actions.push(
                 <span key="pending" className="text-sm" style={{ color: 'var(--text-tertiary)' }}>
-                    ⏳ Waiting for Ind. Admin review
+                    Waiting for Ind. Admin review
                 </span>
             );
         }
         // Ind_Admin: approve or reject
         if (status === STATUS.IND_DRAFT && submitted_for_review && isAdmin) {
-            actions.push(btn('Approve →  Purchases', () => approveRFQInd(id, true)));
+            actions.push(btn('Approve - Send to Purchases', () => approveRFQInd(id, true)));
             actions.push(btn('Reject (return to engineer)', () => approveRFQInd(id, false), 'outline'));
         }
     }
@@ -930,13 +930,13 @@ function ActionBar({ rfqData, userRole, isAdmin, loading, onAction }) {
     if (userRole === 'purchases') {
         // Purchases_Admin: approve or reject supplier list
         if (isAdmin && status === STATUS.PURCHASES_DRAFT && submitted_for_review) {
-            actions.push(btn('Approve Supplier List → Publish', () => approveSupplierList(id, 'aprobar')));
+            actions.push(btn('Approve Supplier List - Publish', () => approveSupplierList(id, 'aprobar')));
             actions.push(btn('Reject (return to Purchases)', () => approveSupplierList(id, 'rechazar'), 'outline'));
         }
         if (!isAdmin && status === STATUS.PURCHASES_DRAFT && submitted_for_review) {
             actions.push(
                 <span key="pending" className="text-sm" style={{ color: 'var(--text-tertiary)' }}>
-                    ⏳ Waiting for Purchases Admin approval
+                    Waiting for Purchases Admin approval
                 </span>
             );
         }
@@ -945,7 +945,7 @@ function ActionBar({ rfqData, userRole, isAdmin, loading, onAction }) {
         if (!isAdmin && status === STATUS.SUPPLIER_SELECTED) {
             actions.push(
                 <span key="pending-award" className="text-sm" style={{ color: 'var(--text-tertiary)' }}>
-                    ⏳ Waiting for Purchases Admin final award approval
+                    Waiting for Purchases Admin final award approval
                 </span>
             );
         }

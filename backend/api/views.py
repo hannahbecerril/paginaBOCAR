@@ -26,6 +26,7 @@ from .constants import STATUS
 from .permissions import IsSuperAdmin, IsIndAdmin, IsIndUser, IsPurchasesAdmin, IsPurchasesUser, IsSupplier, IsInternalUser
 from .serializers import (
     ArchivoSerializer, UsuarioReadSerializer, UsuarioCreateSerializer,
+    UsuarioAdminReadSerializer, UsuarioAdminUpdateSerializer,
     RFQBaseSerializer, ProveedorSerializer, NotificacionSerializer,
 )
 from .models.base import RFQ_Assignment
@@ -138,11 +139,25 @@ class LoginProveedorView(APIView):
 # ── User Management ───────────────────────────────────────────────────────────
 
 class ListarUsuariosView(ListAPIView):
-    """Any internal staff can list internal users (excludes Supplier group)."""
-    serializer_class = UsuarioReadSerializer
+    """
+    GET /api/usuarios/listar/
+    ────────────────────────────────────────────────────────────────────────────────────
+    - SuperAdmin → full UsuarioAdminReadSerializer (all fields + date_joined)
+    - Other internal staff → UsuarioReadSerializer (limited fields)
+    Both exclude the Supplier group.
+    """
     permission_classes = [IsAuthenticated, IsInternalUser]
 
+    def get_serializer_class(self):
+        user = self.request.user
+        if user.groups.filter(name='SuperAdmin').exists():
+            return UsuarioAdminReadSerializer
+        return UsuarioReadSerializer
+
     def get_queryset(self):
+        user = self.request.user
+        if user.groups.filter(name='SuperAdmin').exists():
+            return User.objects.all().order_by('id')
         return User.objects.exclude(groups__name='Supplier').order_by('id')
 
 
@@ -153,7 +168,17 @@ class CrearUsuarioView(CreateAPIView):
 
 
 class UsuarioDetailView(APIView):
-    """GET (any internal staff) / PATCH / DELETE (SuperAdmin only) a single internal user."""
+    """
+    GET  /api/usuarios/<pk>/  → any internal user can view a user profile.
+    PATCH /api/usuarios/<pk>/ → SuperAdmin only; accepts partial updates via
+                                  UsuarioAdminUpdateSerializer.
+    DELETE /api/usuarios/<pk>/ → SuperAdmin only; hard delete (use is_active
+                                   = False for soft delete instead).
+
+    Accepted PATCH payload keys (all optional):
+        first_name, last_name, email, rol (Group name), is_active, password
+    """
+
     def get_permissions(self):
         if self.request.method == 'GET':
             return [IsAuthenticated(), IsInternalUser()]
@@ -161,33 +186,47 @@ class UsuarioDetailView(APIView):
 
     def get(self, request, pk):
         user = get_object_or_404(User, pk=pk)
+        # Return richer data for SuperAdmin
+        if request.user.groups.filter(name='SuperAdmin').exists():
+            return Response(UsuarioAdminReadSerializer(user).data)
         return Response(UsuarioReadSerializer(user).data)
 
     def patch(self, request, pk):
-        from django.contrib.auth.models import Group
+        """
+        Partial update.  Handles both plain field updates and password changes.
+        Examples:
+            {"is_active": false}                     → soft-delete / deactivate
+            {"rol": "Purchases_Admin"}               → change area
+            {"first_name": "Ana", "email": "a@b.c"} → edit profile
+            {"password": "newpass123"}               → reset password inline
+        """
         user = get_object_or_404(User, pk=pk)
 
-        for field in ('email', 'first_name', 'last_name'):
-            if field in request.data:
-                setattr(user, field, request.data[field])
+        # Password is handled separately (not part of the model serializer)
+        new_password = request.data.get('password')
+        data = {k: v for k, v in request.data.items() if k != 'password'}
 
-        if 'rol' in request.data:
-            grupo = get_object_or_404(Group, name=request.data['rol'])
-            user.groups.clear()
-            user.groups.add(grupo)
+        serializer = UsuarioAdminUpdateSerializer(user, data=data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
 
-        if 'is_active' in request.data:
-            val = request.data['is_active']
-            user.is_active = val if isinstance(val, bool) else str(val).lower() in ('true', '1')
+        if new_password:
+            user.set_password(new_password)
+            user.save(update_fields=['password'])
 
-        if 'password' in request.data and request.data['password']:
-            user.set_password(request.data['password'])
-
-        user.save()
-        return Response(UsuarioReadSerializer(user).data)
+        return Response(UsuarioAdminReadSerializer(user).data)
 
     def delete(self, request, pk):
+        """
+        Hard delete.  Prefer PATCH {"is_active": false} for soft-delete.
+        Will refuse to delete the requesting user's own account.
+        """
         user = get_object_or_404(User, pk=pk)
+        if user == request.user:
+            return Response(
+                {"error": "No puedes eliminar tu propia cuenta."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         user.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -205,10 +244,26 @@ class ResetPasswordView(APIView):
 
 
 class CambiarEstadoUsuarioView(APIView):
+    """
+    PUT /api/usuarios/<pk>/estado/
+    ────────────────────────────────────────────────────────────────────────────────────
+    Soft-delete (deactivate) or re-activate an internal user.
+    SuperAdmin only.  Cannot deactivate your own account.
+    
+    Body: { "is_active": true | false }
+    Returns: full UsuarioAdminReadSerializer payload.
+    """
     permission_classes = [IsAuthenticated, IsSuperAdmin]
 
     def put(self, request, pk):
         user = get_object_or_404(User, pk=pk)
+
+        if user == request.user:
+            return Response(
+                {"error": "No puedes desactivar tu propia cuenta."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         nuevo_estado = request.data.get('is_active')
 
         if nuevo_estado is None:
@@ -220,12 +275,12 @@ class CambiarEstadoUsuarioView(APIView):
             nuevo_estado = bool(nuevo_estado)
 
         user.is_active = nuevo_estado
-        user.save()
-        accion = "reactivado" if nuevo_estado else "dado de baja (suspendido)"
+        user.save(update_fields=['is_active'])
+        accion = 'reactivado' if nuevo_estado else 'desactivado (soft-delete)'
 
         return Response({
-            "mensaje": f"El usuario '{user.username}' ha sido {accion} exitosamente.",
-            "usuario": {"id": user.id, "username": user.username, "is_active": user.is_active},
+            'mensaje': f"El usuario '{user.username}' ha sido {accion} exitosamente.",
+            'usuario': UsuarioAdminReadSerializer(user).data,
         })
 
 

@@ -237,10 +237,12 @@ export default function TableComponent({
             }
 
             case 'priority':
+                if (!value) return <span className="text-sm" style={{ color: 'var(--text-tertiary)' }}>—</span>;
                 const priorityStyles = {
                     high: { color: 'var(--priority-high)', backgroundColor: 'rgba(239, 68, 68, 0.1)', borderColor: 'var(--priority-high)' },
                     medium: { color: 'var(--priority-medium)', backgroundColor: 'rgba(245, 158, 11, 0.1)', borderColor: 'var(--priority-medium)' },
-                    low: { color: 'var(--priority-low)', backgroundColor: 'rgba(16, 185, 129, 0.1)', borderColor: 'var(--priority-low)' }
+                    low: { color: 'var(--priority-low)', backgroundColor: 'rgba(16, 185, 129, 0.1)', borderColor: 'var(--priority-low)' },
+                    critical: { color: '#dc2626', backgroundColor: 'rgba(220, 38, 38, 0.15)', borderColor: '#dc2626', fontWeight: 700 },
                 };
                 const priorityStyle = priorityStyles[value?.toLowerCase()] || { color: 'var(--text-secondary)', backgroundColor: 'var(--surface-hover)', borderColor: 'var(--border-default)' };
                 return (

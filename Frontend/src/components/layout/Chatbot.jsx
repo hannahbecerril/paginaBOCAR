@@ -33,7 +33,7 @@ const RESPONSES = {
         { k: ['deadline', 'due'],      r: 'Your upcoming deadlines are visible in the **Calendar** section. They\'re pulled from the response_deadline field set by the Purchases team.' },
         { k: ['draft', 'rfq'],         r: '**Drafts** shows RFQs where you\'re invited but haven\'t responded yet. **Not Answered RFQs** shows the same list — both are your active quote opportunities.' },
         { k: ['all rfq', 'history'],   r: '**All RFQs** shows your complete history: RFQs you\'ve responded to, ones where you won, and ones that closed. Use the status filter to find specific ones.' },
-        { k: ['selected', 'winner'],   r: 'If you\'re selected as the winner, the RFQ status changes to "Supplier Selected" and your quote card shows "✅ Selected". Congratulations!' },
+        { k: ['selected', 'winner'],   r: 'If you\'re selected as the winner, the RFQ status changes to "Supplier Selected" and your quote card shows "Selected". Congratulations!' },
         { k: ['not selected', 'lost'], r: 'If another supplier was selected, the status shows "Not Selected". You can review the RFQ history in **All RFQs** for future reference.' },
         { k: ['price', 'cost'],        r: 'The quote form asks for a detailed cost breakdown. Fill in as many fields as possible — Purchases teams compare all submitted quotes side by side.' },
     ],
@@ -74,7 +74,7 @@ export default function Chatbot({ userRole = 'industrialization' }) {
         {
             id: 0,
             role: 'bot',
-            text: `Hi ${userName}! I'm your BOCAR Procurement Assistant 👋\n\nI can help you with RFQ workflows, deadlines, approvals, and system navigation. What can I help you with today?`,
+            text: `Hi ${userName}! I'm your BOCAR Procurement Assistant.\n\nI can help you with RFQ workflows, deadlines, approvals, and system navigation. What can I help you with today?`,
             time: new Date(),
         },
     ]);

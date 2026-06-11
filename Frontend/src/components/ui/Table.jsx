@@ -89,8 +89,8 @@ const Table = ({
 
     // Sort indicator
     const getSortIndicator = (key) => {
-        if (sortConfig.key !== key) return '↕️';
-        return sortConfig.direction === 'asc' ? '↑' : '↓';
+        if (sortConfig.key !== key) return '';
+        return sortConfig.direction === 'asc' ? 'A-Z' : 'Z-A';
     };
 
     return (

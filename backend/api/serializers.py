@@ -1,6 +1,16 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User, Group
 from .models import Archivo, RFQ_Base
+
+# Available internal roles — keep in sync with Django Group names
+INTERNAL_ROLES = [
+    'SuperAdmin',
+    'Industrialization_Admin',
+    'Industrialization',
+    'Purchases_Admin',
+    'Purchases',
+    'Supplier',
+]
 from .models.notificacion import Notificacion
 
 
@@ -48,6 +58,83 @@ class UsuarioCreateSerializer(serializers.ModelSerializer):
         )
         user.groups.add(grupo)
         return user
+
+
+# ── SuperAdmin: full admin read serializer ────────────────────────────────────
+class UsuarioAdminReadSerializer(serializers.ModelSerializer):
+    """
+    Read-only serializer used by the SuperAdmin user management panel.
+    Exposes all relevant fields including grupos (area) and is_active.
+    """
+    grupos     = serializers.SerializerMethodField()
+    department = serializers.SerializerMethodField()
+    area       = serializers.SerializerMethodField()  # alias for department
+    full_name  = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = User
+        fields = [
+            'id', 'username', 'first_name', 'last_name', 'full_name',
+            'email', 'is_active', 'is_superuser',
+            'grupos', 'department', 'area',
+            'last_login', 'date_joined',
+        ]
+
+    def get_grupos(self, obj):
+        return list(obj.groups.values_list('name', flat=True))
+
+    def get_department(self, obj):
+        return obj.groups.first().name if obj.groups.exists() else None
+
+    def get_area(self, obj):
+        return self.get_department(obj)
+
+    def get_full_name(self, obj):
+        name = f'{obj.first_name} {obj.last_name}'.strip()
+        return name or obj.username
+
+
+# ── SuperAdmin: partial-update serializer ─────────────────────────────────────
+class UsuarioAdminUpdateSerializer(serializers.ModelSerializer):
+    """
+    Write serializer for PATCH /api/usuarios/<pk>/.
+    Accepts: first_name, last_name, email, rol (Group name), is_active, password.
+    All fields are optional (partial=True is set on the view).
+    """
+    rol = serializers.CharField(required=False, write_only=True)
+
+    class Meta:
+        model  = User
+        fields = ['first_name', 'last_name', 'email', 'is_active', 'rol']
+        extra_kwargs = {
+            'first_name': {'required': False},
+            'last_name':  {'required': False},
+            'email':      {'required': False},
+            'is_active':  {'required': False},
+        }
+
+    def validate_rol(self, value):
+        if value and not Group.objects.filter(name=value).exists():
+            raise serializers.ValidationError(
+                f"El rol '{value}' no existe. Roles disponibles: {INTERNAL_ROLES}"
+            )
+        return value
+
+    def update(self, instance, validated_data):
+        rol_nombre = validated_data.pop('rol', None)
+
+        # Update scalar fields
+        for field in ('first_name', 'last_name', 'email', 'is_active'):
+            if field in validated_data:
+                setattr(instance, field, validated_data[field])
+
+        # Update group / area
+        if rol_nombre:
+            grupo = Group.objects.get(name=rol_nombre)
+            instance.groups.set([grupo])
+
+        instance.save()
+        return instance
 
 
 class RFQBaseSerializer(serializers.ModelSerializer):

@@ -83,7 +83,7 @@ function NotificationPreferencesCard({ userId, userRole }) {
                     className="px-4 py-1.5 text-xs font-medium transition-colors"
                     style={{ backgroundColor: saved ? 'var(--status-active)' : 'var(--brand-accent)', color: 'white' }}
                 >
-                    {saved ? '✓ Saved' : 'Save Preferences'}
+                    {saved ? 'Saved' : 'Save Preferences'}
                 </button>
             </div>
         </Card>

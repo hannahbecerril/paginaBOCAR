@@ -40,6 +40,16 @@ class Command(BaseCommand):
                 'is_staff': True,
                 'is_active': True,
             },
+            # Requested Super Admin
+            {
+                'username': 'superadmin_user',
+                'password': 'superadmin1234',
+                'email': 'superadmin_user@bocar.com',
+                'group': 'SuperAdmin',
+                'is_staff': True,
+                'is_active': True,
+                'is_superuser': True,
+            },
             # Purchases - Standard User
             {
                 'username': 'purchases_user',
@@ -100,6 +110,10 @@ class Command(BaseCommand):
                 is_staff=data['is_staff'],
                 is_active=data['is_active'],
             )
+
+            if data.get('is_superuser'):
+                user.is_superuser = True
+                user.save()
 
             group = Group.objects.get(name=data['group'])
             user.groups.add(group)

@@ -192,8 +192,8 @@ export default function IndustrializationDashboard() {
                                 {renderBarChart(
                                     chartData?.statusChange,
                                     [
-                                        { name: 'Draft → Sent to Purchases', data: chartData?.statusChange?.draftToSent || [], color: 'var(--brand-accent)' },
-                                        { name: 'Created → Draft', data: chartData?.statusChange?.createdToDraft || [], color: 'var(--status-completed)' }
+                                        { name: 'Draft to Sent to Purchases', data: chartData?.statusChange?.draftToSent || [], color: 'var(--brand-accent)' },
+                                        { name: 'Created to Draft', data: chartData?.statusChange?.createdToDraft || [], color: 'var(--status-completed)' }
                                     ],
                                     getMaxValue(chartData?.statusChange)
                                 )}
@@ -202,11 +202,11 @@ export default function IndustrializationDashboard() {
                                 <div className="flex justify-center gap-4 mt-4 pt-3 border-t" style={{ borderColor: 'var(--border-light)' }}>
                                     <div className="flex items-center gap-1.5">
                                         <div className="w-2.5 h-2.5" style={{ backgroundColor: 'var(--brand-accent)' }} />
-                                        <span className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>Draft → Sent to Purchases</span>
+                                        <span className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>Draft to Sent to Purchases</span>
                                     </div>
                                     <div className="flex items-center gap-1.5">
                                         <div className="w-2.5 h-2.5" style={{ backgroundColor: 'var(--status-completed)' }} />
-                                        <span className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>Created → Draft</span>
+                                        <span className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>Created to Draft</span>
                                     </div>
                                 </div>
                             </div>
@@ -219,13 +219,13 @@ export default function IndustrializationDashboard() {
                                 <div className="space-y-4">
                                     <div className="grid grid-cols-2 gap-3">
                                         <div className="p-3 border border-border-default">
-                                            <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Avg. Draft → Sent</p>
+                                            <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Avg. Draft to Sent</p>
                                             <p className="text-xl font-semibold mt-1" style={{ color: 'var(--brand-accent)' }}>
                                                 {chartData?.statusChange?.stats.avgDraftToSent || '-'} days
                                             </p>
                                         </div>
                                         <div className="p-3 border border-border-default">
-                                            <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Avg. Created → Draft</p>
+                                            <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Avg. Created to Draft</p>
                                             <p className="text-xl font-semibold mt-1" style={{ color: 'var(--status-completed)' }}>
                                                 {chartData?.statusChange?.stats.avgCreatedToDraft || '-'} days
                                             </p>
@@ -234,13 +234,13 @@ export default function IndustrializationDashboard() {
                                     <div className="p-3 border border-border-default">
                                         <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Fastest Processing Time</p>
                                         <p className="text-sm font-medium mt-1" style={{ color: 'var(--text-primary)' }}>
-                                            {chartData?.statusChange?.stats.fastestDraftToSent || '-'} days (Draft → Sent)
+                                            {chartData?.statusChange?.stats.fastestDraftToSent || '-'} days (Draft to Sent)
                                         </p>
                                     </div>
                                     <div className="p-3 border border-border-default">
                                         <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Slowest Processing Time</p>
                                         <p className="text-sm font-medium mt-1" style={{ color: 'var(--text-primary)' }}>
-                                            {chartData?.statusChange?.stats.slowestDraftToSent || '-'} days (Draft → Sent)
+                                            {chartData?.statusChange?.stats.slowestDraftToSent || '-'} days (Draft to Sent)
                                         </p>
                                     </div>
                                     <div className="pt-2">
