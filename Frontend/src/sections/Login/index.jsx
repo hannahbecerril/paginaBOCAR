@@ -139,28 +139,6 @@ export default function Login({ onLogin }) {
           <p className="text-white/60 text-sm leading-relaxed">
             Centralized platform for managing requests, quotations, and supplier tracking.
           </p>
-
-          {/* Features List */}
-          <div className="mt-8 space-y-3">
-            <div className="flex items-center gap-3 text-white/70 text-sm">
-              <div className="w-5 h-5 bg-white/10 flex items-center justify-center">
-                <Shield size={12} className="text-white/70" />
-              </div>
-              <span>Secure document management</span>
-            </div>
-            <div className="flex items-center gap-3 text-white/70 text-sm">
-              <div className="w-5 h-5 bg-white/10 flex items-center justify-center">
-                <Users size={12} className="text-white/70" />
-              </div>
-              <span>Supplier collaboration</span>
-            </div>
-            <div className="flex items-center gap-3 text-white/70 text-sm">
-              <div className="w-5 h-5 bg-white/10 flex items-center justify-center">
-                <Building size={12} className="text-white/70" />
-              </div>
-              <span>Quote management</span>
-            </div>
-          </div>
         </div>
       </div>
 

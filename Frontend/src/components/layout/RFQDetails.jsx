@@ -3,7 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import {
     ArrowLeft, FileText, Package, Download, CheckCircle, Clock,
-    DollarSign, Truck, Trophy, AlertCircle, ChevronDown, ChevronUp,
+    AlertCircle, ChevronDown, ChevronUp,
     Settings, Info, Factory, ShoppingCart, Building2, Calendar, Layers,
     Users, Edit, X,
 } from 'lucide-react';
@@ -48,8 +48,8 @@ const SPEC_GROUPS = {
             fields: [
                 { key: 'Smach',       label: 'Machine' },
                 { key: 'No_CAV',      label: 'No. of Cavities' },
-                { key: 'No_ofHS',     label: 'Hydraulic Slides' },
-                { key: 'No_ofMS',     label: 'Mechanical Slides' },
+                { key: 'No_ofHS',     label: 'Hydraulic Slides', options: [{value:'Defined by toolmaker',label:'Defined by toolmaker'},{value:'0',label:'0'},{value:'1',label:'1'},{value:'2',label:'2'},{value:'3',label:'3'},{value:'4+',label:'4+'}] },
+                { key: 'No_ofMS',     label: 'Mechanical Slides', options: [{value:'Defined by toolmaker',label:'Defined by toolmaker'},{value:'0',label:'0'},{value:'1',label:'1'},{value:'2',label:'2'},{value:'3',label:'3'},{value:'4+',label:'4+'}] },
                 { key: 'ThirdPSupp',  label: 'Third Party Supplier' },
                 { key: 'No_subc',     label: 'No. of Subcontractors' },
             ],
@@ -78,9 +78,9 @@ const SPEC_GROUPS = {
                 { key: 'part_height',    label: 'Height',       unit: 'mm', stat: true },
                 { key: 'part_depth',     label: 'Depth',        unit: 'mm', stat: true },
                 { key: 'part_weight_kg', label: 'Weight',       unit: 'kg', stat: true },
-                { key: 'product_type',   label: 'Product Type' },
-                { key: 'comodity',       label: 'Commodity' },
-                { key: 'country',        label: 'Country' },
+                { key: 'product_type',   label: 'Product Type', options: IA_CATALOGS.productTypes.map(t => ({ value: t, label: t })) },
+                { key: 'comodity',       label: 'Commodity',    options: IA_CATALOGS.comodities.map(c => ({ value: c, label: c })) },
+                { key: 'country',        label: 'Country',      options: IA_CATALOGS.countries.map(c => ({ value: c, label: c })) },
             ],
         },
     ],
@@ -106,15 +106,15 @@ const SPEC_GROUPS = {
             fields: [
                 { key: 'Press',                  label: 'Press Type' },
                 { key: 'No_cavities',            label: 'No. of Cavities' },
-                { key: 'No_hydra_slides',        label: 'Hydraulic Slides' },
-                { key: 'Ful_Auto_proc',          label: 'Fully Automatic Process' },
-                { key: 'Presence_Detec',         label: 'Presence Detectors' },
-                { key: 'Trim_proc',              label: 'Trimming Process' },
-                { key: 'Pun_pins_req',           label: 'Punch Pins Required' },
+                { key: 'No_hydra_slides',        label: 'Hydraulic Slides',          options: [{value:'Defined by toolmaker',label:'Defined by toolmaker'},{value:'0',label:'0'},{value:'1',label:'1'},{value:'2',label:'2'},{value:'3',label:'3'},{value:'4+',label:'4+'}] },
+                { key: 'Ful_Auto_proc',          label: 'Fully Automatic Process',   options: [{value:'Yes',label:'Yes'},{value:'No',label:'No'}] },
+                { key: 'Presence_Detec',         label: 'Presence Detectors',        options: [{value:'Yes',label:'Yes'},{value:'No',label:'No'}] },
+                { key: 'Trim_proc',              label: 'Trimming Process',          options: [{value:'Cold',label:'Cold'},{value:'Hot',label:'Hot'}] },
+                { key: 'Pun_pins_req',           label: 'Punch Pins Required',       options: [{value:'Yes',label:'Yes'},{value:'No',label:'No'}] },
                 { key: 'Admissible_res_burr_mm', label: 'Admissible Residual Burr (mm)' },
-                { key: 'Castings_supp',          label: 'Castings Supplied By' },
-                { key: 'Adjust_opt_tool_maker',  label: 'Adjustments at Tool Maker' },
-                { key: 'Gas_spri',               label: 'Gas Springs' },
+                { key: 'Castings_supp',          label: 'Castings Supplied By',      options: [{value:'Yes',label:'Yes'},{value:'No',label:'No'}] },
+                { key: 'Adjust_opt_tool_maker',  label: 'Adjustments at Tool Maker', options: [{value:'Yes',label:'Yes'},{value:'No',label:'No'}] },
+                { key: 'Gas_spri',               label: 'Gas Springs',               options: [{value:'Yes',label:'Yes'},{value:'No',label:'No'},{value:'Defined by toolmaker',label:'Defined by toolmaker'}] },
             ],
         },
         {
@@ -124,9 +124,9 @@ const SPEC_GROUPS = {
                 { key: 'part_height',    label: 'Height', unit: 'mm', stat: true },
                 { key: 'part_depth',     label: 'Depth',  unit: 'mm', stat: true },
                 { key: 'part_weight_kg', label: 'Weight', unit: 'kg', stat: true },
-                { key: 'product_type',   label: 'Product Type' },
-                { key: 'comodity',       label: 'Commodity' },
-                { key: 'country',        label: 'Country' },
+                { key: 'product_type',   label: 'Product Type', options: IA_CATALOGS.productTypes.map(t => ({ value: t, label: t })) },
+                { key: 'comodity',       label: 'Commodity',    options: IA_CATALOGS.comodities.map(c => ({ value: c, label: c })) },
+                { key: 'country',        label: 'Country',      options: IA_CATALOGS.countries.map(c => ({ value: c, label: c })) },
             ],
         },
     ],
@@ -165,9 +165,8 @@ function getStatusStyle(status) {
 function SubLabel({ icon: Icon, text, accent }) {
     return (
         <div className="flex items-center gap-2 mb-4">
-            <div className="w-0.5 self-stretch min-h-[1rem]" style={{ backgroundColor: accent ?? 'var(--brand-accent)' }} />
-            <Icon size={13} style={{ color: accent ?? 'var(--brand-accent)' }} />
-            <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
+            <Icon size={14} style={{ color: accent ?? 'var(--brand-accent)' }} />
+            <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
                 {text}
             </span>
         </div>
@@ -177,13 +176,14 @@ function SubLabel({ icon: Icon, text, accent }) {
 function StatBlock({ label, value, unit }) {
     const empty = value == null || value === '';
     return (
-        <div className="flex flex-col items-center justify-center p-4 border text-center"
-            style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--background-secondary)' }}>
-            <span className="text-xl font-bold leading-none" style={{ color: empty ? 'var(--text-tertiary)' : 'var(--text-primary)' }}>
+        <div className="flex flex-col items-center justify-center p-4 rounded-xl text-center"
+            style={{ backgroundColor: 'var(--background-secondary)' }}>
+            <span className="text-2xl font-bold leading-none tracking-tight"
+                style={{ color: empty ? 'var(--text-tertiary)' : 'var(--text-primary)' }}>
                 {empty ? '—' : String(value)}
             </span>
-            {unit && <span className="text-[10px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{unit}</span>}
-            <span className="text-[10px] uppercase tracking-wider mt-2 font-semibold" style={{ color: 'var(--text-tertiary)' }}>
+            {unit && <span className="text-xs mt-0.5 font-medium" style={{ color: 'var(--text-secondary)' }}>{unit}</span>}
+            <span className="text-xs mt-1.5 font-medium" style={{ color: 'var(--text-secondary)' }}>
                 {label}
             </span>
         </div>
@@ -192,13 +192,14 @@ function StatBlock({ label, value, unit }) {
 
 function PropRow({ label, value, even }) {
     return (
-        <div className="flex items-start gap-4 px-3 py-2.5"
-            style={{ backgroundColor: even ? 'var(--surface-hover)' : 'transparent' }}>
-            <span className="text-xs font-semibold uppercase tracking-wider flex-shrink-0"
-                style={{ color: 'var(--text-tertiary)', minWidth: '180px' }}>
+        <div className="flex items-start justify-between gap-8 px-4 py-3"
+            style={{ backgroundColor: even ? 'var(--background-secondary)' : 'transparent' }}>
+            <span className="text-sm font-medium flex-shrink-0"
+                style={{ color: 'var(--text-secondary)', minWidth: '160px' }}>
                 {label}
             </span>
-            <span className="text-sm" style={{ color: value ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>
+            <span className="text-sm font-semibold text-right"
+                style={{ color: value ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>
                 {value ? String(value) : '—'}
             </span>
         </div>
@@ -220,24 +221,24 @@ function SpecGroupView({ group, specs, userRole }) {
     return (
         <div className="mb-6">
             <div className="flex items-center gap-2 mb-3">
-                <Icon size={13} style={{ color: 'var(--brand-accent)' }} />
-                <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
+                <Icon size={15} style={{ color: 'var(--brand-accent)' }} />
+                <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
                     {group.label}
-                </span>
+                </h3>
             </div>
 
             {bigFields.map(f => (
-                <div key={f.key} className="mb-3 p-4 border-l-2"
-                    style={{ borderLeftColor: 'var(--brand-accent)', backgroundColor: 'var(--background-secondary)' }}>
-                    <span className="text-[10px] font-semibold uppercase tracking-wider block mb-1" style={{ color: 'var(--text-tertiary)' }}>
-                        {f.label}
-                    </span>
-                    <p className="text-sm leading-relaxed" style={{ color: 'var(--text-primary)' }}>{specs[f.key]}</p>
+                <div key={f.key} className="mb-4">
+                    <p className="text-xs font-semibold uppercase tracking-wider mb-1.5"
+                        style={{ color: 'var(--text-tertiary)' }}>{f.label}</p>
+                    <p className="text-base leading-relaxed" style={{ color: 'var(--text-primary)' }}>
+                        {specs[f.key] || '—'}
+                    </p>
                 </div>
             ))}
 
             {statFields.length > 0 && (
-                <div className="grid gap-2 mb-3" style={{ gridTemplateColumns: `repeat(${Math.min(statFields.length, 4)}, 1fr)` }}>
+                <div className="grid gap-3 mb-3" style={{ gridTemplateColumns: `repeat(${Math.min(statFields.length, 4)}, 1fr)` }}>
                     {statFields.map(f => (
                         <StatBlock key={f.key} label={f.label} value={specs[f.key]} unit={f.unit} />
                     ))}
@@ -245,7 +246,7 @@ function SpecGroupView({ group, specs, userRole }) {
             )}
 
             {propFields.length > 0 && (
-                <div className="border overflow-hidden" style={{ borderColor: 'var(--border-light)' }}>
+                <div className="rounded-xl overflow-hidden border" style={{ borderColor: 'var(--border-light)' }}>
                     {propFields.map((f, i) => (
                         <PropRow key={f.key} label={f.label} value={specs[f.key]} even={i % 2 === 1} />
                     ))}
@@ -293,11 +294,6 @@ function EditField({ label, value, onChange, required, type = 'text', options })
 function SpecsEditContent({ rfqType, specs, onChange }) {
     const groups = SPEC_GROUPS[rfqType] ?? [];
     const reqSet = new Set(REQUIRED_SPEC_FIELDS[rfqType] ?? []);
-    const dimOpts = {
-        product_type: IA_CATALOGS?.productTypes ?? [],
-        comodity:     IA_CATALOGS?.comodities   ?? [],
-        country:      IA_CATALOGS?.countries    ?? [],
-    };
     return (
         <div className="space-y-6">
             {groups.map(group => {
@@ -317,8 +313,8 @@ function SpecsEditContent({ rfqType, specs, onChange }) {
                                         label={f.label}
                                         value={specs[f.key]}
                                         required={reqSet.has(f.key)}
-                                        type={(f.key === 'DTQ' || f.key === 'DTQB') ? 'date' : 'text'}
-                                        options={dimOpts[f.key]}
+                                        type={(f.key === 'DTQ' || f.key === 'DTQB') ? 'date' : (f.stat && !f.options) ? 'number' : 'text'}
+                                        options={f.options}
                                         onChange={v => onChange(f.key, v)}
                                     />
                                 </div>
@@ -416,30 +412,32 @@ function PurchasesEditContent({ meta, onMetaChange, supplierIds, onAddSupplier, 
 
 function StageHeader({ icon: Icon, label, accent, approved, canEdit, onEdit }) {
     return (
-        <div className="flex items-center justify-between px-5 py-3 border-b"
-            style={{ backgroundColor: 'var(--background-secondary)', borderColor: 'var(--border-light)' }}>
-            <div className="flex items-center gap-2">
-                <div className="w-1 h-4 flex-shrink-0" style={{ backgroundColor: accent }} />
-                <Icon size={14} style={{ color: accent }} />
-                <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
-                    {label}
-                </span>
-                {approved && (
-                    <span className="ml-2 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 border"
-                        style={{ color: 'var(--status-active)', borderColor: 'var(--status-active)', backgroundColor: 'rgba(16,185,129,0.08)' }}>
-                        <CheckCircle size={10} /> Approved
+        <div>
+            <div className="h-0.5" style={{ background: `linear-gradient(90deg, ${accent}, ${accent}60)` }} />
+            <div className="flex items-center justify-between px-5 py-3.5"
+                style={{ backgroundColor: 'var(--background-secondary)', borderBottom: '1px solid var(--border-light)' }}>
+                <div className="flex items-center gap-2.5">
+                    <Icon size={15} style={{ color: accent }} />
+                    <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                        {label}
                     </span>
+                    {approved && (
+                        <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-semibold"
+                            style={{ color: 'var(--status-active)', backgroundColor: 'rgba(16,185,129,0.1)' }}>
+                            <CheckCircle size={10} /> Approved
+                        </span>
+                    )}
+                </div>
+                {canEdit && (
+                    <button onClick={onEdit}
+                        className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors"
+                        style={{ color: 'var(--brand-accent)', borderColor: 'var(--brand-accent)', backgroundColor: 'transparent' }}
+                        onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(59,130,246,0.06)'}
+                        onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}>
+                        <Edit size={12} /> Edit
+                    </button>
                 )}
             </div>
-            {canEdit && (
-                <button onClick={onEdit}
-                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 border transition-colors"
-                    style={{ color: 'var(--brand-accent)', borderColor: 'var(--brand-accent)', backgroundColor: 'transparent' }}
-                    onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(59,130,246,0.06)'}
-                    onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}>
-                    <Edit size={12} /> Edit
-                </button>
-            )}
         </div>
     );
 }
@@ -470,6 +468,10 @@ export default function RFQDetails() {
     const userRole = location.pathname.includes('/Purchases/') ? 'purchases'
         : location.pathname.includes('/Suppliers/') ? 'suppliers'
             : 'industrialization';
+
+    const basePath = userRole === 'purchases' ? '/Purchases'
+        : userRole === 'suppliers' ? '/Suppliers'
+            : '/Industrialization';
 
     const storedUser = (() => { try { return JSON.parse(localStorage.getItem('user') || '{}'); } catch { return {}; } })();
     const isAdmin = (storedUser.grupos ?? []).some(g => g.includes('_Admin') || g === 'SuperAdmin');
@@ -529,7 +531,7 @@ export default function RFQDetails() {
                 : { die_trim: editData.specs };
             await saveSpecifications(rfqData.id, payload);
             closeModal();
-            reloadRFQ();
+            navigate(`${basePath}/Drafts`);
         } catch (err) { alert(`Save failed: ${err.message}`); }
         finally { setIsSaving(false); }
     };
@@ -543,7 +545,7 @@ export default function RFQDetails() {
             await saveSpecifications(rfqData.id, payload);
             await submitRFQForReview(rfqData.id, rfqData.type, rfqData.title ?? '');
             closeModal();
-            reloadRFQ();
+            navigate(`${basePath}/All-RFQ`);
         } catch (err) { alert(`Submit failed: ${err.message}`); }
         finally { setIsSaving(false); }
     };
@@ -554,7 +556,7 @@ export default function RFQDetails() {
             await savePurchasesMetadata(rfqData.id, editData.meta);
             await assignSuppliers(rfqData.id, editData.supplierIds ?? [], isDraft);
             closeModal();
-            reloadRFQ();
+            navigate(isDraft ? `${basePath}/Drafts` : `${basePath}/All-RFQ`);
         } catch (err) { alert(`Save failed: ${err.message}`); }
         finally { setIsSaving(false); }
     };
@@ -618,32 +620,38 @@ export default function RFQDetails() {
 
     return (
         <div className="min-h-screen" style={{ backgroundColor: 'var(--background-secondary)' }}>
-            <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
                 {/* ── Header ─────────────────────────────────────────────── */}
                 <div className="flex items-start justify-between mb-6 flex-wrap gap-4">
                     <div className="flex items-start gap-3">
-                        <button onClick={() => navigate(-1)} className="p-2 mt-1" style={{ color: 'var(--text-secondary)' }}>
+                        <button
+                            onClick={() => navigate(-1)}
+                            className="p-2 mt-1 rounded-full transition-colors"
+                            style={{ color: 'var(--text-secondary)' }}
+                            onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--surface-hover)'}
+                            onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                        >
                             <ArrowLeft size={18} />
                         </button>
                         <div>
                             <div className="flex flex-wrap items-center gap-2 mb-1">
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider border"
-                                    style={{ color: typeColor.color, backgroundColor: typeColor.bg, borderColor: typeColor.border }}>
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full"
+                                    style={{ color: typeColor.color, backgroundColor: typeColor.bg }}>
                                     <Factory size={10} /> {rfqData.type}
                                 </span>
-                                <span className="px-2.5 py-0.5 text-xs font-medium border" style={getStatusStyle(rfqData.status)}>
+                                <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full" style={getStatusStyle(rfqData.status)}>
                                     {STATUS_LABEL[rfqData.status] ?? rfqData.status}
                                 </span>
                                 {rfqData.submitted_for_review && (
-                                    <span className="px-2 py-0.5 text-[10px] font-medium border"
-                                        style={{ color: 'var(--status-pending)', backgroundColor: 'rgba(245,158,11,0.08)', borderColor: 'var(--status-pending)' }}>
+                                    <span className="px-2.5 py-0.5 text-[10px] font-semibold rounded-full"
+                                        style={{ color: 'var(--status-pending)', backgroundColor: 'rgba(245,158,11,0.1)' }}>
                                         Pending Review
                                     </span>
                                 )}
                                 {rfqData.priority && (
-                                    <span className="px-2.5 py-0.5 text-xs font-medium border"
-                                        style={{ color: priorityMap[rfqData.priority] ?? 'var(--text-tertiary)', backgroundColor: 'transparent', borderColor: priorityMap[rfqData.priority] ?? 'var(--border-default)' }}>
+                                    <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full"
+                                        style={{ color: priorityMap[rfqData.priority] ?? 'var(--text-tertiary)', backgroundColor: `${priorityMap[rfqData.priority] ?? 'var(--text-tertiary)'}1a` }}>
                                         {rfqData.priority}
                                     </span>
                                 )}
@@ -658,19 +666,14 @@ export default function RFQDetails() {
 
                 {/* ── Winner banner ───────────────────────────────────────── */}
                 {userRole === 'suppliers' && rfqData.is_winner && (
-                    <div className="mb-6 flex items-start gap-4 p-5 border"
-                        style={{ backgroundColor: 'rgba(16,185,129,0.06)', borderColor: 'rgba(16,185,129,0.3)' }}>
-                        <div className="p-2.5 flex-shrink-0" style={{ backgroundColor: 'var(--status-active)' }}>
-                            <Trophy size={22} color="#fff" />
-                        </div>
-                        <div>
-                            <h2 className="text-base font-bold" style={{ color: 'var(--status-active)' }}>
-                                Congratulations — Quote Awarded
-                            </h2>
-                            <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
-                                BOCAR Group has selected your quote. The Purchases team will contact you.
-                            </p>
-                        </div>
+                    <div className="mb-6 px-5 py-4 rounded-2xl border"
+                        style={{ backgroundColor: 'rgba(16,185,129,0.06)', borderColor: 'rgba(16,185,129,0.25)' }}>
+                        <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--status-active)' }}>
+                            Award Notification
+                        </p>
+                        <p className="text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+                            BOCAR Group has selected your quotation for this RFQ. A representative from the Purchases team will reach out to finalize the terms of the agreement.
+                        </p>
                     </div>
                 )}
 
@@ -678,7 +681,7 @@ export default function RFQDetails() {
 
                     {/* ─── Stage 1: Industrialization ─────────────────────── */}
                     {rfqData.stage1 && (
-                        <div className="border" style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border-default)' }}>
+                        <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border-light)', boxShadow: '0 2px 12px rgba(0,0,0,0.05)' }}>
                             <StageHeader
                                 icon={Factory} label="Industrialization" accent="#38bdf8"
                                 approved={!!rfqData.stage1.approvedBy}
@@ -711,8 +714,8 @@ export default function RFQDetails() {
                                         : (
                                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                                                 {rfqData.stage1.data.documents.map(doc => (
-                                                    <div key={doc.id} className="border p-3 hover:bg-surface-hover transition-colors"
-                                                        style={{ borderColor: 'var(--border-light)' }}>
+                                                    <div key={doc.id} className="rounded-xl border p-3 hover:shadow-md transition-all"
+                                                        style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--surface)' }}>
                                                         <div className="flex items-center gap-2 mb-2">
                                                             {doc.is3D ? <Package size={14} style={{ color: 'var(--brand-accent)' }} /> : <FileText size={14} style={{ color: 'var(--text-tertiary)' }} />}
                                                             <span className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>{doc.name}</span>
@@ -734,7 +737,7 @@ export default function RFQDetails() {
 
                     {/* ─── Stage 2: Purchases ─────────────────────────────── */}
                     {rfqData.stage2 && userRole !== 'suppliers' && (
-                        <div className="border" style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border-default)' }}>
+                        <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border-light)', boxShadow: '0 2px 12px rgba(0,0,0,0.05)' }}>
                             <StageHeader
                                 icon={ShoppingCart} label="Purchases" accent="#4ade80"
                                 approved={false}
@@ -755,10 +758,10 @@ export default function RFQDetails() {
                                                 { label: 'Shipping Terms',       value: rfqData.shipping_terms },
                                                 { label: 'Quality Requirements', value: rfqData.quality_requirements },
                                             ].filter(x => x.value).map(({ label, value }) => (
-                                                <div key={label} className="p-3 border"
-                                                    style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--background-secondary)' }}>
-                                                    <span className="text-[10px] font-semibold uppercase tracking-wider block mb-1" style={{ color: 'var(--text-tertiary)' }}>{label}</span>
-                                                    <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{value}</p>
+                                                <div key={label} className="p-4 rounded-xl"
+                                                    style={{ backgroundColor: 'var(--background-secondary)' }}>
+                                                    <span className="text-xs font-medium block mb-1" style={{ color: 'var(--text-secondary)' }}>{label}</span>
+                                                    <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{value}</p>
                                                 </div>
                                             ))}
                                         </div>
@@ -770,27 +773,28 @@ export default function RFQDetails() {
                                     {(rfqData.stage2.data.suppliers ?? []).length === 0
                                         ? <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>No suppliers assigned yet.</p>
                                         : (
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                            <div className="rounded-xl overflow-hidden border" style={{ borderColor: 'var(--border-light)' }}>
                                                 {rfqData.stage2.data.suppliers.map((s, i) => (
-                                                    <div key={s.id ?? i} className="border p-3"
-                                                        style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--background-secondary)' }}>
-                                                        <div className="flex items-center gap-2 mb-2">
-                                                            <div className="w-8 h-8 flex items-center justify-center text-xs font-bold flex-shrink-0"
+                                                    <div key={s.id ?? i}
+                                                        className="flex items-center justify-between px-4 py-3 border-b last:border-0"
+                                                        style={{ borderColor: 'var(--border-light)', backgroundColor: i % 2 === 1 ? 'var(--background-secondary)' : 'var(--surface)' }}>
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
                                                                 style={{ background: 'linear-gradient(135deg, var(--brand-primary), var(--brand-accent))', color: '#fff' }}>
                                                                 {(s.name ?? '?').charAt(0).toUpperCase()}
                                                             </div>
                                                             <div>
                                                                 <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{s.name}</p>
-                                                                <p className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{s.email || 'No email'}</p>
+                                                                <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{s.email || 'No email'}</p>
                                                             </div>
                                                         </div>
-                                                        <div className="flex items-center justify-between">
-                                                            <span className="px-2 py-0.5 text-xs border" style={getStatusStyle(s.status)}>{s.status}</span>
+                                                        <div className="flex items-center gap-3">
                                                             {s.has_responded && (
                                                                 <span className="text-xs flex items-center gap-1" style={{ color: 'var(--status-active)' }}>
                                                                     <CheckCircle size={11} /> Responded
                                                                 </span>
                                                             )}
+                                                            <span className="px-2.5 py-0.5 text-xs rounded-full font-medium" style={getStatusStyle(s.status)}>{s.status}</span>
                                                         </div>
                                                     </div>
                                                 ))}
@@ -804,20 +808,22 @@ export default function RFQDetails() {
 
                     {/* ─── Stage 3: Supplier Responses / Quote Form ───────── */}
                     {(rfqData.stage3 || shouldShowQuoteForm()) && (
-                        <div className="border" style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border-default)' }}>
-                            <div className="flex items-center gap-2 px-5 py-3 border-b"
-                                style={{ backgroundColor: 'var(--background-secondary)', borderColor: 'var(--border-light)' }}>
-                                <div className="w-1 h-4 flex-shrink-0" style={{ backgroundColor: '#fb923c' }} />
-                                <Users size={14} style={{ color: '#fb923c' }} />
-                                <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
+                        <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border-light)', boxShadow: '0 2px 12px rgba(0,0,0,0.05)' }}>
+                            <div>
+                                <div className="h-0.5" style={{ background: 'linear-gradient(90deg, #fb923c, #fb923c60)' }} />
+                                <div className="flex items-center gap-2.5 px-5 py-3.5"
+                                    style={{ backgroundColor: 'var(--background-secondary)', borderBottom: '1px solid var(--border-light)' }}>
+                                <Users size={15} style={{ color: '#fb923c' }} />
+                                <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
                                     {shouldShowQuoteForm() ? 'Submit Your Quote' : 'Supplier Responses'}
                                 </span>
                                 {rfqData.stage3?.data?.statistics && !shouldShowQuoteForm() && (
-                                    <span className="text-[10px] px-1.5 py-0.5 border ml-2"
-                                        style={{ color: 'var(--text-tertiary)', borderColor: 'var(--border-default)' }}>
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full ml-2"
+                                        style={{ color: 'var(--text-secondary)', backgroundColor: 'var(--background-tertiary)' }}>
                                         {rfqData.stage3.data.statistics.responsesReceived ?? 0} / {rfqData.stage3.data.statistics.totalInvited ?? 0} replied
                                     </span>
                                 )}
+                                </div>
                             </div>
 
                             <div className="p-5">
@@ -835,11 +841,14 @@ export default function RFQDetails() {
                                             const canSelectWinner = userRole === 'purchases'
                                                 && rfqData.status === STATUS.WAITING_FOR_SUPPLIERS;
                                             return (
-                                                <div key={response.supplier} className="border"
-                                                    style={{ borderColor: expanded ? 'var(--brand-accent)' : 'var(--border-default)' }}>
+                                                <div key={response.supplier} className="rounded-xl overflow-hidden transition-all"
+                                                    style={{
+                                                        border: `1px solid ${expanded ? 'var(--brand-accent)' : 'var(--border-light)'}`,
+                                                        boxShadow: expanded ? '0 4px 16px rgba(59,130,246,0.12)' : '0 1px 4px rgba(0,0,0,0.04)',
+                                                    }}>
                                                     <div className="flex justify-between items-start p-4">
                                                         <div className="flex items-center gap-2.5">
-                                                            <div className="w-9 h-9 flex items-center justify-center text-sm font-bold"
+                                                            <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold"
                                                                 style={{ background: 'linear-gradient(135deg, var(--brand-primary), var(--brand-accent))', color: '#fff' }}>
                                                                 {(response.supplier ?? '?').charAt(0).toUpperCase()}
                                                             </div>
@@ -858,7 +867,7 @@ export default function RFQDetails() {
                                                                     if (!supplierId) { setActionError('Could not identify supplier ID.'); return; }
                                                                     runAction(() => selectWinner(rfqData.id, supplierId));
                                                                 }}
-                                                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs border transition-colors"
+                                                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition-colors"
                                                                 style={{ color: 'var(--status-active)', borderColor: 'var(--status-active)', backgroundColor: 'rgba(16,185,129,0.06)' }}
                                                                 onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(16,185,129,0.14)'}
                                                                 onMouseLeave={e => e.currentTarget.style.backgroundColor = 'rgba(16,185,129,0.06)'}
@@ -908,8 +917,8 @@ export default function RFQDetails() {
 
                     {/* ─── Action errors + Action bar ─────────────────────── */}
                     {actionError && (
-                        <div className="flex items-center gap-2 px-4 py-3 border text-sm"
-                            style={{ color: 'var(--brand-danger)', borderColor: 'var(--brand-danger)', backgroundColor: 'rgba(239,68,68,0.08)' }}>
+                        <div className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm"
+                            style={{ color: 'var(--brand-danger)', backgroundColor: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
                             <AlertCircle size={15} /> {actionError}
                         </div>
                     )}

@@ -1,6 +1,6 @@
 // components/layout/NavBar.jsx
 import { NavLink, useLocation } from 'react-router-dom';
-import { LogOut, User, ChevronDown, Bell, ChevronRight } from 'lucide-react';
+import { LogOut, ChevronDown, Bell, ChevronRight } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import Cookies from 'js-cookie';
 import Button from '../ui/Button';
@@ -14,6 +14,11 @@ function NavBar({ module, basePath, tabs = [], sections = [], user = { name: 'Us
     const [openDropdown, setOpenDropdown] = useState(null);
     const dropdownTimeoutRef = useRef(null);
 
+    // Scroll-aware nav
+    const [hidden, setHidden] = useState(false);
+    const [scrolled, setScrolled] = useState(false);
+    const lastScrollY = useRef(0);
+
     const {
         notifications,
         markAsRead,
@@ -22,77 +27,94 @@ function NavBar({ module, basePath, tabs = [], sections = [], user = { name: 'Us
         updateUserRole,
     } = useNotifications();
 
-    // Update user role when route changes
     useEffect(() => {
         updateUserRole(location.pathname);
     }, [location.pathname, updateUserRole]);
 
-    // Handle dropdown hover
+    useEffect(() => {
+        const onScroll = () => {
+            const y = window.scrollY;
+            const goingDown = y > lastScrollY.current;
+            setScrolled(y > 8);
+            if (y < 10) setHidden(false);
+            else setHidden(goingDown);
+            lastScrollY.current = y;
+        };
+        const onMouseMove = (e) => {
+            if (e.clientY < 8) setHidden(false);
+        };
+        window.addEventListener('scroll', onScroll, { passive: true });
+        window.addEventListener('mousemove', onMouseMove);
+        return () => {
+            window.removeEventListener('scroll', onScroll);
+            window.removeEventListener('mousemove', onMouseMove);
+        };
+    }, []);
+
     const handleDropdownEnter = (index) => {
-        if (dropdownTimeoutRef.current) {
-            clearTimeout(dropdownTimeoutRef.current);
-        }
+        if (dropdownTimeoutRef.current) clearTimeout(dropdownTimeoutRef.current);
         setOpenDropdown(index);
     };
 
     const handleDropdownLeave = () => {
-        dropdownTimeoutRef.current = setTimeout(() => {
-            setOpenDropdown(null);
-        }, 200);
+        dropdownTimeoutRef.current = setTimeout(() => setOpenDropdown(null), 200);
     };
 
-    // Check if a dropdown item is active
-    const isDropdownItemActive = (section) => {
-        return section.items.some(item => location.pathname === `${basePath}/${item.path}`);
-    };
+    const isSectionActive = (section) =>
+        section.items.some(item => location.pathname === `${basePath}/${item.path}`);
 
-    // Check if any item in section is active
-    const isSectionActive = (section) => {
-        return section.items.some(item => location.pathname === `${basePath}/${item.path}`);
-    };
+    const initials = (user?.name ?? 'U').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
 
     return (
         <>
-            <nav className="bg-surface border-b border-border-default relative" style={{ zIndex: 10 }}>
+            <nav
+                style={{
+                    position: 'sticky',
+                    top: 0,
+                    zIndex: 50,
+                    transform: hidden ? 'translateY(-100%)' : 'translateY(0)',
+                    transition: 'transform 320ms cubic-bezier(0.4,0,0.2,1), box-shadow 200ms ease',
+                    backgroundColor: scrolled ? 'rgba(255,255,255,0.88)' : '#ffffff',
+                    backdropFilter: scrolled ? 'blur(16px)' : 'none',
+                    WebkitBackdropFilter: scrolled ? 'blur(16px)' : 'none',
+                    boxShadow: scrolled
+                        ? '0 1px 0 rgba(0,0,0,0.06), 0 4px 20px rgba(0,0,0,0.06)'
+                        : '0 1px 0 var(--border-default)',
+                }}
+            >
                 <div className="w-full px-4 sm:px-6 lg:px-8">
                     <div className="grid h-16" style={{ gridTemplateColumns: 'auto 1fr auto' }}>
-                        {/* Left section */}
-                        <div className="flex justify-center">
-                            <div className="h-full flex-shrink-0 flex items-center px-10">
-                                <div className="w-30 flex items-center justify-center">
-                                    <img src="/BOCAR_logoBlue.png" alt="BOCAR logo" />
-                                </div>
 
-                                {/* Vertical Divider */}
-                                <div className="h-6 w-px bg-border-default mx-3" />
-
-                                <span className="ml-3 text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                        {/* Left – logo + module */}
+                        <div className="flex items-center">
+                            <div className="flex items-center gap-3 px-4">
+                                <img src="/BOCAR_logoBlue.png" alt="BOCAR" className="h-7 w-auto" />
+                                <div className="h-4 w-px" style={{ backgroundColor: 'var(--border-default)' }} />
+                                <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
                                     {module}
                                 </span>
                             </div>
                         </div>
 
-                        {/* Tabs & Dropdown Sections */}
-                        <div className="flex items-center justify-start">
-                            <div className="hidden sm:ml-6 sm:flex sm:space-x-1">
-                                {/* Regular Tabs */}
+                        {/* Center – tabs + dropdowns */}
+                        <div className="flex items-center">
+                            <div className="hidden sm:flex sm:items-center sm:gap-0.5 sm:ml-4">
+
                                 {!sectionsFirst && tabs.map((tab) => (
                                     <NavLink
                                         key={tab.path}
                                         to={`${basePath}/${tab.path}`}
-                                        className={({ isActive }) => `
-                                            px-3 py-2 text-sm font-medium transition-colors duration-fast
+                                        className={({ isActive }) =>
+                                            `px-3 py-1.5 rounded-lg text-sm font-medium transition-colors duration-150
                                             ${isActive
-                                                ? 'text-brand-accent border-b-2 border-brand-accent'
-                                                : 'text-text-secondary hover:text-text-primary hover:border-b-2 hover:border-border-dark'
-                                            }
-                                        `}
+                                                ? 'text-brand-accent bg-blue-50'
+                                                : 'text-text-secondary hover:text-text-primary hover:bg-surface-hover'}`
+                                        }
                                     >
                                         {tab.label}
                                     </NavLink>
                                 ))}
 
-                                {/* Dropdown Sections */}
                                 {sections.map((section, index) => {
                                     const isActive = isSectionActive(section);
                                     return (
@@ -103,63 +125,63 @@ function NavBar({ module, basePath, tabs = [], sections = [], user = { name: 'Us
                                             onMouseLeave={handleDropdownLeave}
                                         >
                                             <button
-                                                className={`
-                                                    px-3 py-2 text-sm font-medium transition-colors duration-fast
-                                                    flex items-center gap-1
+                                                className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors duration-150
                                                     ${isActive || openDropdown === index
-                                                        ? 'text-brand-accent border-b-2 border-brand-accent'
-                                                        : 'text-text-secondary hover:text-text-primary hover:border-b-2 hover:border-border-dark'
-                                                    }
-                                                `}
+                                                        ? 'text-brand-accent bg-blue-50'
+                                                        : 'text-text-secondary hover:text-text-primary hover:bg-surface-hover'}`}
                                             >
                                                 {section.label}
-                                                <ChevronDown size={14} className={`transition-transform duration-200 ${openDropdown === index ? 'rotate-180' : ''}`} />
+                                                <ChevronDown
+                                                    size={14}
+                                                    className={`transition-transform duration-200 ${openDropdown === index ? 'rotate-180' : ''}`}
+                                                />
                                             </button>
 
-                                            {/* Dropdown Menu */}
                                             {openDropdown === index && (
                                                 <div
-                                                    className="absolute left-0 mt-0 w-56 bg-surface border border-border-default shadow-lg"
-                                                    style={{ zIndex: 'var(--z-popover)' }}
+                                                    className="absolute left-0 mt-1 w-52 rounded-xl overflow-hidden"
+                                                    style={{
+                                                        zIndex: 'var(--z-popover)',
+                                                        backgroundColor: 'var(--surface)',
+                                                        border: '1px solid var(--border-light)',
+                                                        boxShadow: '0 8px 24px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.06)',
+                                                    }}
                                                 >
-                                                    {section.items.map((item) => {
-                                                        const isItemActive = location.pathname === `${basePath}/${item.path}`;
-                                                        return (
-                                                            <NavLink
-                                                                key={item.path}
-                                                                to={`${basePath}/${item.path}`}
-                                                                className={`
-                                                                    flex items-center justify-between px-4 py-2 text-sm transition-colors duration-fast
-                                                                    ${isItemActive
-                                                                        ? 'text-brand-accent bg-brand-accent/5'
-                                                                        : 'text-text-primary hover:bg-surface-hover'
-                                                                    }
-                                                                `}
-                                                                onClick={() => setOpenDropdown(null)}
-                                                            >
-                                                                {item.label}
-                                                                {isItemActive && <ChevronRight size={14} style={{ color: 'var(--brand-accent)' }} />}
-                                                            </NavLink>
-                                                        );
-                                                    })}
+                                                    <div className="p-1">
+                                                        {section.items.map((item) => {
+                                                            const isItemActive = location.pathname === `${basePath}/${item.path}`;
+                                                            return (
+                                                                <NavLink
+                                                                    key={item.path}
+                                                                    to={`${basePath}/${item.path}`}
+                                                                    className={`flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors duration-fast
+                                                                        ${isItemActive
+                                                                            ? 'text-brand-accent bg-blue-50 font-medium'
+                                                                            : 'text-text-primary hover:bg-surface-hover'}`}
+                                                                    onClick={() => setOpenDropdown(null)}
+                                                                >
+                                                                    {item.label}
+                                                                    {isItemActive && <ChevronRight size={13} style={{ color: 'var(--brand-accent)' }} />}
+                                                                </NavLink>
+                                                            );
+                                                        })}
+                                                    </div>
                                                 </div>
                                             )}
                                         </div>
                                     );
                                 })}
 
-                                {/* Tabs rendered after sections when sectionsFirst=true */}
                                 {sectionsFirst && tabs.map((tab) => (
                                     <NavLink
                                         key={tab.path}
                                         to={`${basePath}/${tab.path}`}
-                                        className={({ isActive }) => `
-                                            px-3 py-2 text-sm font-medium transition-colors duration-fast
+                                        className={({ isActive }) =>
+                                            `px-3 py-1.5 rounded-lg text-sm font-medium transition-colors duration-150
                                             ${isActive
-                                                ? 'text-brand-accent border-b-2 border-brand-accent'
-                                                : 'text-text-secondary hover:text-text-primary hover:border-b-2 hover:border-border-dark'
-                                            }
-                                        `}
+                                                ? 'text-brand-accent bg-blue-50'
+                                                : 'text-text-secondary hover:text-text-primary hover:bg-surface-hover'}`
+                                        }
                                     >
                                         {tab.label}
                                     </NavLink>
@@ -167,44 +189,39 @@ function NavBar({ module, basePath, tabs = [], sections = [], user = { name: 'Us
                             </div>
                         </div>
 
-                        {/* Right section */}
-                        <div className="flex items-center justify-center">
-                            <Button
-                                variant="outline"
+                        {/* Right – notifications + user */}
+                        <div className="flex items-center gap-2 px-2">
+                            <button
                                 onClick={() => setShowNotifications(true)}
-                                className="border-none"
+                                className="relative flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors hover:bg-surface-hover"
+                                style={{ color: 'var(--text-secondary)' }}
                             >
-                                <div className='flex justify-around gap-8'>
-                                    <div className="relative">
-                                        <Bell className="w-5 h-5" style={{ color: 'var(--text-secondary)' }} />
-                                        {unreadCount > 0 && (
-                                            <span className="absolute -top-1.5 -right-4 inline-flex items-center justify-center px-2 py-1 text-[10px] font-bold leading-none"
-                                                style={{ color: 'var(--text-inverse)', backgroundColor: 'var(--brand-danger)' }}
-                                            >
-                                                {unreadCount}
-                                            </span>
-                                        )}
-                                    </div>
-                                    Notifications
-                                </div>
-                            </Button>
+                                <Bell size={17} />
+                                <span className="hidden sm:inline">Notifications</span>
+                                {unreadCount > 0 && (
+                                    <span className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
+                                        style={{ backgroundColor: 'var(--brand-danger)' }}>
+                                        {unreadCount > 9 ? '9+' : unreadCount}
+                                    </span>
+                                )}
+                            </button>
 
-                            {/* Vertical Divider */}
-                            <div className="h-6 w-px bg-border-default mx-3" />
+                            <div className="h-4 w-px" style={{ backgroundColor: 'var(--border-default)' }} />
 
                             <div className="relative">
                                 <button
                                     onClick={() => setShowUserMenu(!showUserMenu)}
-                                    className="flex items-center gap-2 px-3 py-2 text-sm transition-colors duration-fast"
+                                    className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-colors hover:bg-surface-hover"
                                     style={{ color: 'var(--text-secondary)' }}
-                                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--surface-hover)'}
-                                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                                 >
-                                    <div className="w-6 h-6 bg-surface-hover flex items-center justify-center">
-                                        <User size={14} style={{ color: 'var(--text-secondary)' }} />
+                                    <div
+                                        className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0"
+                                        style={{ background: 'linear-gradient(135deg, var(--brand-primary), var(--brand-accent))' }}
+                                    >
+                                        {initials}
                                     </div>
-                                    <span>{user?.name || 'User'}</span>
-                                    <ChevronDown size={14} />
+                                    <span className="hidden sm:inline max-w-[120px] truncate">{user?.name || 'User'}</span>
+                                    <ChevronDown size={13} />
                                 </button>
 
                                 {showUserMenu && (
@@ -214,22 +231,30 @@ function NavBar({ module, basePath, tabs = [], sections = [], user = { name: 'Us
                                             style={{ zIndex: 'var(--z-dropdown)' }}
                                             onClick={() => setShowUserMenu(false)}
                                         />
-                                        <div className="absolute right-0 mt-2 w-48 bg-surface border border-border-default" style={{ zIndex: 'var(--z-popover)' }}>
-                                            <button
-                                                onClick={() => {
-                                                    localStorage.removeItem('user');
-                                                    Cookies.remove('access_token');
-                                                    Cookies.remove('refresh_token');
-                                                    window.location.href = '/Login';
-                                                }}
-                                                className="w-full px-4 py-2 text-left text-sm transition-colors duration-fast flex items-center gap-2"
-                                                style={{ color: 'var(--text-primary)' }}
-                                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--surface-hover)'}
-                                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                                            >
-                                                <LogOut size={14} />
-                                                Sign Out
-                                            </button>
+                                        <div
+                                            className="absolute right-0 mt-1 w-44 rounded-xl overflow-hidden"
+                                            style={{
+                                                zIndex: 'var(--z-popover)',
+                                                backgroundColor: 'var(--surface)',
+                                                border: '1px solid var(--border-light)',
+                                                boxShadow: '0 8px 24px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.06)',
+                                            }}
+                                        >
+                                            <div className="p-1">
+                                                <button
+                                                    onClick={() => {
+                                                        localStorage.removeItem('user');
+                                                        Cookies.remove('access_token');
+                                                        Cookies.remove('refresh_token');
+                                                        window.location.href = '/Login';
+                                                    }}
+                                                    className="w-full px-3 py-2 rounded-lg text-left text-sm flex items-center gap-2 transition-colors hover:bg-surface-hover"
+                                                    style={{ color: 'var(--brand-danger)' }}
+                                                >
+                                                    <LogOut size={14} />
+                                                    Sign Out
+                                                </button>
+                                            </div>
                                         </div>
                                     </>
                                 )}
@@ -239,7 +264,6 @@ function NavBar({ module, basePath, tabs = [], sections = [], user = { name: 'Us
                 </div>
             </nav>
 
-            {/* Notifications Sidebar */}
             <NotisSidebar
                 isOpen={showNotifications}
                 onClose={() => setShowNotifications(false)}

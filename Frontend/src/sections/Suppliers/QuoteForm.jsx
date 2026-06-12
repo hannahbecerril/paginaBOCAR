@@ -319,21 +319,23 @@ function SectionTable({ title, items, data, onChange }) {
     const col1 = sfx === 'h' ? 'Hours'   : (sfx === 'q' ? 'Qty'     : 'Units');
     const col2 = sfx === 'h' ? 'Price/h' : (sfx === 'q' ? 'Price/q' : 'Price/unit');
     return (
-        <div className="mb-6">
+        <div className="mb-5 rounded-xl overflow-hidden border shadow-sm" style={{ borderColor: 'var(--border-light)' }}>
             {title && (
-                <h4 className="text-xs font-semibold uppercase tracking-wider mb-2 pb-1 border-b" style={{ color: 'var(--text-tertiary)', borderColor: 'var(--border-default)' }}>
-                    {title}
-                </h4>
+                <div className="px-4 py-2.5 border-b" style={{ backgroundColor: 'var(--background-secondary)', borderColor: 'var(--border-light)' }}>
+                    <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                        {title}
+                    </h4>
+                </div>
             )}
             <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                     <thead style={{ backgroundColor: 'var(--background-tertiary)' }}>
                         <tr>
-                            <th className="px-3 py-2 text-left text-xs font-medium" style={{ color: 'var(--text-tertiary)' }}>Item</th>
-                            <th className="px-2 py-2 text-left text-xs font-medium" style={{ color: 'var(--text-tertiary)', width: '100px' }}>{col1}</th>
-                            <th className="px-2 py-2 text-left text-xs font-medium" style={{ color: 'var(--text-tertiary)', width: '100px' }}>{col2}</th>
-                            <th className="px-2 py-2 text-left text-xs font-medium" style={{ color: 'var(--text-tertiary)', width: '110px' }}>Total</th>
-                            <th className="px-2 py-2 text-left text-xs font-medium" style={{ color: 'var(--text-tertiary)', width: '80px' }}>Weeks</th>
+                            <th className="px-4 py-2.5 text-left text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>Item</th>
+                            <th className="px-3 py-2.5 text-left text-xs font-semibold" style={{ color: 'var(--text-secondary)', width: '110px' }}>{col1}</th>
+                            <th className="px-3 py-2.5 text-left text-xs font-semibold" style={{ color: 'var(--text-secondary)', width: '110px' }}>{col2}</th>
+                            <th className="px-3 py-2.5 text-left text-xs font-semibold" style={{ color: 'var(--text-secondary)', width: '120px' }}>Total</th>
+                            <th className="px-3 py-2.5 text-left text-xs font-semibold" style={{ color: 'var(--text-secondary)', width: '90px' }}>Weeks</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -350,15 +352,15 @@ function SectionTable({ title, items, data, onChange }) {
 // ── Header fields ─────────────────────────────────────────────────────────────
 function HeaderFields({ fields, data, onChange }) {
     return (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6 p-3 border border-border-default" style={{ backgroundColor: 'var(--background-tertiary)' }}>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5 p-4 rounded-xl border shadow-sm" style={{ backgroundColor: 'var(--background-secondary)', borderColor: 'var(--border-light)' }}>
             {fields.map(f => (
                 <div key={f.key}>
-                    <label className="text-xs uppercase tracking-wider block mb-1" style={{ color: 'var(--text-tertiary)' }}>{f.label}</label>
+                    <label className="text-xs font-medium block mb-1.5" style={{ color: 'var(--text-secondary)' }}>{f.label}</label>
                     <input
                         type={f.type ?? 'text'}
                         value={data[f.key] ?? ''}
                         onChange={e => onChange(f.key, e.target.value)}
-                        className="w-full px-2 py-1.5 text-sm border border-border-default bg-surface focus:outline-none focus:ring-1 focus:ring-brand-accent"
+                        className="w-full px-3 py-2 text-sm rounded-lg border border-border-default bg-surface focus:outline-none focus:ring-2 focus:ring-brand-accent/20 focus:border-brand-accent transition-all"
                         style={{ color: 'var(--text-primary)' }}
                     />
                 </div>
@@ -407,10 +409,11 @@ function SummaryRowMold({ label, prefix, data, onChange, skipToolRep=false, skip
 
 function SummaryTableMold({ data, onChange }) {
     return (
-        <div className="mb-6 overflow-x-auto">
-            <h4 className="text-xs font-semibold uppercase tracking-wider mb-2 pb-1 border-b" style={{ color: 'var(--text-tertiary)', borderColor: 'var(--border-default)' }}>
-                COST AND TIMING BREAKDOWN
-            </h4>
+        <div className="mb-5 rounded-xl overflow-hidden border shadow-sm" style={{ borderColor: 'var(--border-light)' }}>
+            <div className="px-4 py-2.5 border-b" style={{ backgroundColor: 'var(--background-secondary)', borderColor: 'var(--border-light)' }}>
+                <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Cost & Timing Breakdown</h4>
+            </div>
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
                 <thead style={{ backgroundColor: 'var(--background-tertiary)' }}>
                     <tr>
@@ -463,6 +466,7 @@ function SummaryTableMold({ data, onChange }) {
                     </tr>
                 </tbody>
             </table>
+            </div>
         </div>
     );
 }
@@ -495,10 +499,11 @@ function SummaryRowDie({ label, prefix, data, onChange }) {
 
 function SummaryTableDie({ data, onChange }) {
     return (
-        <div className="mb-6 overflow-x-auto">
-            <h4 className="text-xs font-semibold uppercase tracking-wider mb-2 pb-1 border-b" style={{ color: 'var(--text-tertiary)', borderColor: 'var(--border-default)' }}>
-                COST AND TIMING BREAKDOWN
-            </h4>
+        <div className="mb-5 rounded-xl overflow-hidden border shadow-sm" style={{ borderColor: 'var(--border-light)' }}>
+            <div className="px-4 py-2.5 border-b" style={{ backgroundColor: 'var(--background-secondary)', borderColor: 'var(--border-light)' }}>
+                <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Cost & Timing Breakdown</h4>
+            </div>
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
                 <thead style={{ backgroundColor: 'var(--background-tertiary)' }}>
                     <tr>
@@ -544,6 +549,7 @@ function SummaryTableDie({ data, onChange }) {
                     </tr>
                 </tbody>
             </table>
+            </div>
         </div>
     );
 }
@@ -887,17 +893,17 @@ export default function QuoteForm({ rfqId, rfqType, existingResponses = [], onSu
                                 style={{ minWidth: '60px' }}
                             >
                                 <div
-                                    className="w-9 h-9 flex items-center justify-center text-sm font-bold flex-shrink-0 transition-all"
+                                    className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 transition-all shadow-sm"
                                     style={{
                                         backgroundColor: isDone
                                             ? 'var(--status-active)'
                                             : isActive
                                                 ? 'var(--brand-accent)'
-                                                : 'var(--surface-hover)',
+                                                : 'var(--surface)',
                                         color: isDone || isActive ? '#fff' : 'var(--text-tertiary)',
                                         border: isDone || isActive
                                             ? 'none'
-                                            : '1px solid var(--border-default)',
+                                            : '1.5px solid var(--border-default)',
                                     }}
                                 >
                                     {isDone && !isActive ? <Check size={16} strokeWidth={3} /> : stepNum}
@@ -932,7 +938,7 @@ export default function QuoteForm({ rfqId, rfqType, existingResponses = [], onSu
             </div>
 
             {/* ── Step navigation ── */}
-            <div className="flex items-center justify-between mt-6 pt-4 border-t border-border-default">
+            <div className="flex items-center justify-between mt-8 pt-5 border-t" style={{ borderColor: 'var(--border-light)' }}>
                 <div>
                     {activeStep > 0 && (
                         <Button variant="outline" onClick={() => setActiveTab(s => s - 1)}>
