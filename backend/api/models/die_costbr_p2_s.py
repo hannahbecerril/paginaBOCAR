@@ -5,14 +5,16 @@ from django.contrib.auth.models import User
 
 # ── DIE_COSTBR_P2_S ───────────────────────────────────────────────
 class DIE_COSTBR_P2_S(models.Model):
-
     id_rfq = models.ForeignKey(
-        RFQ_Base, on_delete=models.CASCADE, related_name='die_costbr_p2_s_rfq'
+        RFQ_Base, on_delete=models.CASCADE, related_name="die_costbr_p2_s_rfq"
     )
     supplier = models.ForeignKey(
-        User, on_delete=models.PROTECT, related_name='die_costbr_p2_s_supplier', null=True, blank=True
+        User,
+        on_delete=models.PROTECT,
+        related_name="die_costbr_p2_s_supplier",
+        null=True,
+        blank=True,
     )
-
 
     Mill_H = models.FloatField(max_length=255, null=True, blank=True)
     Mill_PriceH = models.FloatField(max_length=255, null=True, blank=True)
@@ -68,8 +70,7 @@ class DIE_COSTBR_P2_S(models.Model):
     TotalManuWk_Weeks = models.FloatField(max_length=255, null=True, blank=True)
 
     class Meta:
-        db_table = 'DIE_COSTBR_P2_S'
+        db_table = "DIE_COSTBR_P2_S"
 
     def __str__(self):
-        return f'Die Costbreakdown Part 2 S - RFQ {self.id_rfq}'
-    
+        return f"Die Costbreakdown Part 2 S - RFQ {self.id_rfq}"

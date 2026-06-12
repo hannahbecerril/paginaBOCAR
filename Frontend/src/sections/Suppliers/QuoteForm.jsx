@@ -214,22 +214,22 @@ const DIE_P1_ACCESSORIES = [
 ];
 
 const DIE_P2_MACHINING = [
-    { prefix: 'Mill',           label: 'Milling',           suffix: 'h' },
-    { prefix: 'Turn',           label: 'Turning',           suffix: 'h' },
-    { prefix: 'Wirecut',        label: 'Wire Cutting',      suffix: 'h' },
-    { prefix: 'EDM',            label: 'EDM',               suffix: 'h' },
-    { prefix: 'Grind',          label: 'Grinding',          suffix: 'h' },
-    { prefix: 'Drill',          label: 'Drilling',          suffix: 'h' },
-    { prefix: 'OthMachin',      label: 'Others (Machining)',suffix: 'h' },
-    { prefix: 'TotalMachinCst', label: 'TOTAL MACHINING',   suffix: 'h', isTotal: true },
+    { prefix: 'Mill',           label: 'Milling',           suffix: 'H' },
+    { prefix: 'Turn',           label: 'Turning',           suffix: 'H' },
+    { prefix: 'Wirecut',        label: 'Wire Cutting',      suffix: 'H' },
+    { prefix: 'EDM',            label: 'EDM',               suffix: 'H' },
+    { prefix: 'Grind',          label: 'Grinding',          suffix: 'H' },
+    { prefix: 'Drill',          label: 'Drilling',          suffix: 'H' },
+    { prefix: 'OthMachin',      label: 'Others (Machining)',suffix: 'H' },
+    { prefix: 'TotalMachinCst', label: 'TOTAL MACHINING',   suffix: 'H', isTotal: true },
 ];
 
 const DIE_P2_MANUAL = [
-    { prefix: 'Assem',       label: 'Assembly',          suffix: 'h' },
-    { prefix: 'Spot',        label: 'Spotting',          suffix: 'h' },
-    { prefix: 'StripPolish', label: 'Strip & Polish',    suffix: 'h' },
-    { prefix: 'OthManual',   label: 'Others (Manual)',   suffix: 'h' },
-    { prefix: 'TotalManuWk', label: 'TOTAL MANUAL WORK', suffix: 'h', isTotal: true },
+    { prefix: 'Assem',       label: 'Assembly',           suffix: 'H' },
+    { prefix: 'Spot',        label: 'Spotting',           suffix: 'H' },
+    { prefix: 'StripPolish', label: 'Strip & Polish',     suffix: 'H' },
+    { prefix: 'OthManual',   label: 'Others (Manual)',    suffix: 'H' },
+    { prefix: 'TotalManuWk', label: 'TOTAL MANUAL WORK',  suffix: 'H', isTotal: true },
 ];
 
 // ── Helper: get field keys from prefix + suffix style ─────────────────────────
@@ -315,8 +315,9 @@ function CostRow({ item, data, onChange }) {
 
 // ── Section table ─────────────────────────────────────────────────────────────
 function SectionTable({ title, items, data, onChange }) {
-    const col1 = items[0]?.suffix === 'h' ? 'Hours' : (items[0]?.suffix === 'q' ? 'Qty' : 'Units');
-    const col2 = items[0]?.suffix === 'h' ? 'Price/h' : (items[0]?.suffix === 'q' ? 'Price/q' : 'Price/unit');
+    const sfx  = items[0]?.suffix?.toLowerCase();
+    const col1 = sfx === 'h' ? 'Hours'   : (sfx === 'q' ? 'Qty'     : 'Units');
+    const col2 = sfx === 'h' ? 'Price/h' : (sfx === 'q' ? 'Price/q' : 'Price/unit');
     return (
         <div className="mb-6">
             {title && (

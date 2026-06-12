@@ -803,7 +803,7 @@ export default function RFQDetails() {
                     )}
 
                     {/* ─── Stage 3: Supplier Responses / Quote Form ───────── */}
-                    {(rfqData.stage3 || shouldShowQuoteForm()) && userRole !== 'purchases' && (
+                    {(rfqData.stage3 || shouldShowQuoteForm()) && (
                         <div className="border" style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border-default)' }}>
                             <div className="flex items-center gap-2 px-5 py-3 border-b"
                                 style={{ backgroundColor: 'var(--background-secondary)', borderColor: 'var(--border-light)' }}>
@@ -832,6 +832,8 @@ export default function RFQDetails() {
                                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                                         {(rfqData.stage3.data.responses ?? []).map(response => {
                                             const expanded = expandedSupplier === response.supplier;
+                                            const canSelectWinner = userRole === 'purchases'
+                                                && rfqData.status === STATUS.WAITING_FOR_SUPPLIERS;
                                             return (
                                                 <div key={response.supplier} className="border"
                                                     style={{ borderColor: expanded ? 'var(--brand-accent)' : 'var(--border-default)' }}>
@@ -846,6 +848,24 @@ export default function RFQDetails() {
                                                                 <span className="px-2 py-0.5 text-xs border" style={getStatusStyle(response.status)}>{response.status}</span>
                                                             </div>
                                                         </div>
+                                                        {canSelectWinner && (
+                                                            <button
+                                                                disabled={actionLoading}
+                                                                onClick={() => {
+                                                                    const supplierId = rfqData.stage2?.data?.suppliers?.find(
+                                                                        s => s.name === response.supplier || s.username === response.supplier
+                                                                    )?.id;
+                                                                    if (!supplierId) { setActionError('Could not identify supplier ID.'); return; }
+                                                                    runAction(() => selectWinner(rfqData.id, supplierId));
+                                                                }}
+                                                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs border transition-colors"
+                                                                style={{ color: 'var(--status-active)', borderColor: 'var(--status-active)', backgroundColor: 'rgba(16,185,129,0.06)' }}
+                                                                onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(16,185,129,0.14)'}
+                                                                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'rgba(16,185,129,0.06)'}
+                                                            >
+                                                                <CheckCircle size={13} /> Select Winner
+                                                            </button>
+                                                        )}
                                                     </div>
                                                     <button
                                                         onClick={() => setExpandedSupplier(expanded ? null : response.supplier)}

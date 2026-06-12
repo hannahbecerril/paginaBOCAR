@@ -1271,16 +1271,6 @@ class SelectWinningSupplierView(APIView):
     def patch(self, request, pk):
         rfq_base = get_object_or_404(RFQ_Base, pk=pk)
 
-        # Guardia de seguridad: un Purchases_Admin NO debe usar esta vista para
-        # saltar la ratificación gerencial. El admin cierra licitaciones con
-        # FalloFinalGerencialView. Un admin que llame esta vista recibe un 403.
-        grupos = list(request.user.groups.values_list('name', flat=True))
-        if 'Purchases_Admin' in grupos and 'SuperAdmin' not in grupos:
-            return Response(
-                {"error": "Los Administradores de Compras deben usar el endpoint de Fallo Gerencial para adjudicar licitaciones."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
         if rfq_base.status != STATUS.WAITING_FOR_SUPPLIERS:
             return Response(
                 {"error": "El RFQ no esta en la fase de seleccion (waiting_for_suppliers)."},
