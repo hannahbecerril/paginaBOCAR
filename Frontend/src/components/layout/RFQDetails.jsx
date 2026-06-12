@@ -1,369 +1,591 @@
 // components/layout/RFQDetails.jsx
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Users, FileText, Package, Eye, Download, CheckCircle, Clock, User, Mail, Phone, DollarSign, Calendar, Truck, Building, MessageSquare, Edit, Save, X, Trash2, Plus, Upload, Trophy } from 'lucide-react';
+import {
+    ArrowLeft, FileText, Package, Download, CheckCircle, Clock,
+    DollarSign, Truck, Trophy, AlertCircle, ChevronDown, ChevronUp,
+    Settings, Info, Factory, ShoppingCart, Building2, Calendar, Layers,
+    Users, Edit, X,
+} from 'lucide-react';
 import Button from '../ui/Button';
-import Card from '../ui/Card';
-import IARecommendations from '../ui/IARecommendations'; // <--- IMPORTACIÓN DE IA CON RUTA RELATIVA
+import Modal from '../ui/Modal';
+import IARecommendations from '../ui/IARecommendations';
 import {
     getRFQById, saveSpecifications, savePurchasesMetadata,
     submitRFQForReview, approveRFQInd,
     assignSuppliers, approveSupplierList, selectWinner, finalManagerDecision,
-    downloadDocument, uploadDocument, getSuppliers, submitQuote,
+    downloadDocument, getSuppliers,
 } from '../../sections/api';
-import UploadCard from '../ui/UploadCard';
 import QuoteForm from '../../sections/Suppliers/QuoteForm';
 import { STATUS, STATUS_LABEL } from '../../constants/rfqStatus';
+import { IA_CATALOGS } from '../../constants/iaCatalogs';
+
+// ── Field definitions ──────────────────────────────────────────────────────────
+
+const SPEC_GROUPS = {
+    mold: [
+        {
+            id: 'basic', label: 'Basic Information', icon: Info,
+            fields: [
+                { key: 'DESC',  label: 'Description',   big: true },
+                { key: 'PNUM',  label: 'Part Number' },
+                { key: 'PT',    label: 'Part Type' },
+                { key: 'CUST',  label: 'Customer',      hideForSuppliers: true },
+                { key: 'ELAB',  label: 'Elaborated By', hideForSuppliers: true },
+            ],
+        },
+        {
+            id: 'production', label: 'Production Planning', icon: Calendar,
+            fields: [
+                { key: 'PPY',  label: 'Parts Per Year', stat: true },
+                { key: 'PRLF', label: 'Project Life',   stat: true },
+                { key: 'TT',   label: 'Tool Type' },
+                { key: 'DTQ',  label: 'Quote Deadline', stat: true },
+            ],
+        },
+        {
+            id: 'tool', label: 'Tool Configuration', icon: Settings,
+            fields: [
+                { key: 'Smach',       label: 'Machine' },
+                { key: 'No_CAV',      label: 'No. of Cavities' },
+                { key: 'No_ofHS',     label: 'Hydraulic Slides' },
+                { key: 'No_ofMS',     label: 'Mechanical Slides' },
+                { key: 'ThirdPSupp',  label: 'Third Party Supplier' },
+                { key: 'No_subc',     label: 'No. of Subcontractors' },
+            ],
+        },
+        {
+            id: 'technical', label: 'Technical Details', icon: Layers,
+            fields: [
+                { key: 'Jco',          label: 'Jet Cooling' },
+                { key: 'QcSys',        label: 'QC System' },
+                { key: 'Ihtcs',        label: 'Integrated HT Control' },
+                { key: 'Spin',         label: 'Spin' },
+                { key: 'HICS',         label: 'HICS' },
+                { key: 'CMGOM',        label: 'CMGOM' },
+                { key: 'SPforThermoR', label: 'SP Thermo Regulation' },
+                { key: 'NReturnV',     label: 'N Return Valve' },
+                { key: 'VacV',         label: 'Vacuum Valve' },
+                { key: 'ChillBl',      label: 'Chill Block' },
+                { key: 'No_PlJcosys',  label: 'Plate Jet Cooling' },
+                { key: 'Oth',          label: 'Other' },
+            ],
+        },
+        {
+            id: 'dimensions', label: 'Dimensions & Classification', icon: Package,
+            fields: [
+                { key: 'part_length',    label: 'Length',       unit: 'mm', stat: true },
+                { key: 'part_height',    label: 'Height',       unit: 'mm', stat: true },
+                { key: 'part_depth',     label: 'Depth',        unit: 'mm', stat: true },
+                { key: 'part_weight_kg', label: 'Weight',       unit: 'kg', stat: true },
+                { key: 'product_type',   label: 'Product Type' },
+                { key: 'comodity',       label: 'Commodity' },
+                { key: 'country',        label: 'Country' },
+            ],
+        },
+    ],
+    die: [
+        {
+            id: 'basic', label: 'Basic Information', icon: Info,
+            fields: [
+                { key: 'DESC',  label: 'Description', big: true },
+                { key: 'PT_No', label: 'Part Number' },
+                { key: 'CUST',  label: 'Customer',    hideForSuppliers: true },
+            ],
+        },
+        {
+            id: 'production', label: 'Production Planning', icon: Calendar,
+            fields: [
+                { key: 'PPY',    label: 'Parts Per Year', stat: true },
+                { key: 'PROJ_L', label: 'Project Life',   stat: true },
+                { key: 'DTQB',   label: 'Quote Deadline', stat: true },
+            ],
+        },
+        {
+            id: 'tool', label: 'Tool Configuration', icon: Settings,
+            fields: [
+                { key: 'Press',                  label: 'Press Type' },
+                { key: 'No_cavities',            label: 'No. of Cavities' },
+                { key: 'No_hydra_slides',        label: 'Hydraulic Slides' },
+                { key: 'Ful_Auto_proc',          label: 'Fully Automatic Process' },
+                { key: 'Presence_Detec',         label: 'Presence Detectors' },
+                { key: 'Trim_proc',              label: 'Trimming Process' },
+                { key: 'Pun_pins_req',           label: 'Punch Pins Required' },
+                { key: 'Admissible_res_burr_mm', label: 'Admissible Residual Burr (mm)' },
+                { key: 'Castings_supp',          label: 'Castings Supplied By' },
+                { key: 'Adjust_opt_tool_maker',  label: 'Adjustments at Tool Maker' },
+                { key: 'Gas_spri',               label: 'Gas Springs' },
+            ],
+        },
+        {
+            id: 'dimensions', label: 'Dimensions & Classification', icon: Package,
+            fields: [
+                { key: 'part_length',    label: 'Length', unit: 'mm', stat: true },
+                { key: 'part_height',    label: 'Height', unit: 'mm', stat: true },
+                { key: 'part_depth',     label: 'Depth',  unit: 'mm', stat: true },
+                { key: 'part_weight_kg', label: 'Weight', unit: 'kg', stat: true },
+                { key: 'product_type',   label: 'Product Type' },
+                { key: 'comodity',       label: 'Commodity' },
+                { key: 'country',        label: 'Country' },
+            ],
+        },
+    ],
+};
+
+const REQUIRED_SPEC_FIELDS = {
+    mold: ['DESC', 'CUST', 'PPY', 'PRLF', 'TT', 'DTQ', 'Smach', 'No_CAV'],
+    die:  ['DESC', 'CUST', 'PPY', 'PROJ_L', 'DTQB', 'Press', 'No_cavities'],
+};
+
+// ── Status styling ─────────────────────────────────────────────────────────────
+
+function getStatusStyle(status) {
+    const map = {
+        [STATUS.IND_DRAFT]:             { color: 'var(--text-tertiary)',    bg: 'var(--surface-disabled)',    border: 'var(--border-default)' },
+        [STATUS.SENT_TO_PURCHASES]:     { color: 'var(--status-active)',    bg: 'rgba(16,185,129,0.1)',       border: 'var(--status-active)' },
+        [STATUS.PURCHASES_DRAFT]:       { color: 'var(--text-tertiary)',    bg: 'var(--surface-disabled)',    border: 'var(--border-default)' },
+        [STATUS.SENT_TO_SUPPLIERS]:     { color: 'var(--status-pending)',   bg: 'rgba(245,158,11,0.1)',       border: 'var(--status-pending)' },
+        [STATUS.WAITING_FOR_SUPPLIERS]: { color: 'var(--status-pending)',   bg: 'rgba(245,158,11,0.1)',       border: 'var(--status-pending)' },
+        [STATUS.SUPPLIER_SELECTED]:     { color: 'var(--status-completed)', bg: 'rgba(59,130,246,0.1)',       border: 'var(--status-completed)' },
+        [STATUS.RFQ_CLOSED]:            { color: 'var(--status-cancelled)', bg: 'rgba(239,68,68,0.1)',        border: 'var(--status-cancelled)' },
+        'Final Quote': { color: 'var(--status-active)',    bg: 'rgba(16,185,129,0.1)', border: 'var(--status-active)' },
+        'Responded':   { color: 'var(--status-completed)', bg: 'rgba(59,130,246,0.1)', border: 'var(--status-completed)' },
+        'Selected':    { color: 'var(--status-active)',    bg: 'rgba(16,185,129,0.1)', border: 'var(--status-active)' },
+        'Pending':     { color: 'var(--status-pending)',   bg: 'rgba(245,158,11,0.1)', border: 'var(--status-pending)' },
+        'Draft':       { color: 'var(--text-tertiary)',    bg: 'var(--surface-disabled)', border: 'var(--border-default)' },
+    };
+    const s = map[status];
+    return s
+        ? { color: s.color, backgroundColor: s.bg, borderColor: s.border }
+        : { color: 'var(--text-tertiary)', backgroundColor: 'var(--surface-disabled)', borderColor: 'var(--border-default)' };
+}
+
+// ── Display sub-components ─────────────────────────────────────────────────────
+
+function SubLabel({ icon: Icon, text, accent }) {
+    return (
+        <div className="flex items-center gap-2 mb-4">
+            <div className="w-0.5 self-stretch min-h-[1rem]" style={{ backgroundColor: accent ?? 'var(--brand-accent)' }} />
+            <Icon size={13} style={{ color: accent ?? 'var(--brand-accent)' }} />
+            <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
+                {text}
+            </span>
+        </div>
+    );
+}
+
+function StatBlock({ label, value, unit }) {
+    const empty = value == null || value === '';
+    return (
+        <div className="flex flex-col items-center justify-center p-4 border text-center"
+            style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--background-secondary)' }}>
+            <span className="text-xl font-bold leading-none" style={{ color: empty ? 'var(--text-tertiary)' : 'var(--text-primary)' }}>
+                {empty ? '—' : String(value)}
+            </span>
+            {unit && <span className="text-[10px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{unit}</span>}
+            <span className="text-[10px] uppercase tracking-wider mt-2 font-semibold" style={{ color: 'var(--text-tertiary)' }}>
+                {label}
+            </span>
+        </div>
+    );
+}
+
+function PropRow({ label, value, even }) {
+    return (
+        <div className="flex items-start gap-4 px-3 py-2.5"
+            style={{ backgroundColor: even ? 'var(--surface-hover)' : 'transparent' }}>
+            <span className="text-xs font-semibold uppercase tracking-wider flex-shrink-0"
+                style={{ color: 'var(--text-tertiary)', minWidth: '180px' }}>
+                {label}
+            </span>
+            <span className="text-sm" style={{ color: value ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>
+                {value ? String(value) : '—'}
+            </span>
+        </div>
+    );
+}
+
+function SpecGroupView({ group, specs, userRole }) {
+    const Icon = group.icon;
+    const visibleFields = group.fields.filter(f =>
+        !(userRole === 'suppliers' && f.hideForSuppliers)
+    );
+    const populated = visibleFields.filter(f => specs[f.key] != null && specs[f.key] !== '');
+    if (populated.length === 0) return null;
+
+    const bigFields  = populated.filter(f => f.big);
+    const statFields = populated.filter(f => f.stat && !f.big);
+    const propFields = populated.filter(f => !f.stat && !f.big);
+
+    return (
+        <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+                <Icon size={13} style={{ color: 'var(--brand-accent)' }} />
+                <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
+                    {group.label}
+                </span>
+            </div>
+
+            {bigFields.map(f => (
+                <div key={f.key} className="mb-3 p-4 border-l-2"
+                    style={{ borderLeftColor: 'var(--brand-accent)', backgroundColor: 'var(--background-secondary)' }}>
+                    <span className="text-[10px] font-semibold uppercase tracking-wider block mb-1" style={{ color: 'var(--text-tertiary)' }}>
+                        {f.label}
+                    </span>
+                    <p className="text-sm leading-relaxed" style={{ color: 'var(--text-primary)' }}>{specs[f.key]}</p>
+                </div>
+            ))}
+
+            {statFields.length > 0 && (
+                <div className="grid gap-2 mb-3" style={{ gridTemplateColumns: `repeat(${Math.min(statFields.length, 4)}, 1fr)` }}>
+                    {statFields.map(f => (
+                        <StatBlock key={f.key} label={f.label} value={specs[f.key]} unit={f.unit} />
+                    ))}
+                </div>
+            )}
+
+            {propFields.length > 0 && (
+                <div className="border overflow-hidden" style={{ borderColor: 'var(--border-light)' }}>
+                    {propFields.map((f, i) => (
+                        <PropRow key={f.key} label={f.label} value={specs[f.key]} even={i % 2 === 1} />
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ── Edit form field ────────────────────────────────────────────────────────────
+
+function EditField({ label, value, onChange, required, type = 'text', options }) {
+    const empty = !value && value !== 0;
+    const borderColor = required && empty ? 'var(--brand-danger)' : 'var(--border-default)';
+    return (
+        <div>
+            <label className="block text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-tertiary)' }}>
+                {label}{required && <span style={{ color: 'var(--brand-danger)' }}> *</span>}
+            </label>
+            {options ? (
+                <select
+                    value={value ?? ''}
+                    onChange={e => onChange(e.target.value)}
+                    className="w-full px-2.5 py-1.5 text-sm border focus:outline-none focus:ring-1 focus:ring-brand-accent"
+                    style={{ backgroundColor: 'var(--surface)', borderColor, color: 'var(--text-primary)' }}
+                >
+                    <option value="">Select…</option>
+                    {options.map(o => <option key={o.value ?? o} value={o.value ?? o}>{o.label ?? o}</option>)}
+                </select>
+            ) : (
+                <input
+                    type={type}
+                    value={value ?? ''}
+                    onChange={e => onChange(e.target.value)}
+                    className="w-full px-2.5 py-1.5 text-sm border focus:outline-none focus:ring-1 focus:ring-brand-accent"
+                    style={{ backgroundColor: 'var(--surface)', borderColor, color: 'var(--text-primary)' }}
+                />
+            )}
+        </div>
+    );
+}
+
+// ── Specs modal content ────────────────────────────────────────────────────────
+
+function SpecsEditContent({ rfqType, specs, onChange }) {
+    const groups = SPEC_GROUPS[rfqType] ?? [];
+    const reqSet = new Set(REQUIRED_SPEC_FIELDS[rfqType] ?? []);
+    const dimOpts = {
+        product_type: IA_CATALOGS?.productTypes ?? [],
+        comodity:     IA_CATALOGS?.comodities   ?? [],
+        country:      IA_CATALOGS?.countries    ?? [],
+    };
+    return (
+        <div className="space-y-6">
+            {groups.map(group => {
+                const Icon = group.icon;
+                return (
+                    <div key={group.id}>
+                        <div className="flex items-center gap-2 mb-3 pb-2 border-b" style={{ borderColor: 'var(--border-light)' }}>
+                            <Icon size={13} style={{ color: 'var(--brand-accent)' }} />
+                            <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
+                                {group.label}
+                            </span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {group.fields.map(f => (
+                                <div key={f.key} className={f.big ? 'sm:col-span-2' : ''}>
+                                    <EditField
+                                        label={f.label}
+                                        value={specs[f.key]}
+                                        required={reqSet.has(f.key)}
+                                        type={(f.key === 'DTQ' || f.key === 'DTQB') ? 'date' : 'text'}
+                                        options={dimOpts[f.key]}
+                                        onChange={v => onChange(f.key, v)}
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
+// ── Purchases modal content ────────────────────────────────────────────────────
+
+function PurchasesEditContent({ meta, onMetaChange, supplierIds, onAddSupplier, onRemoveSupplier, availableSuppliers, suppliersLoading, supplierSearch, onSearchChange }) {
+    return (
+        <div className="space-y-6">
+            <div>
+                <p className="text-xs font-semibold uppercase tracking-wider mb-3 pb-2 border-b"
+                    style={{ color: 'var(--text-tertiary)', borderColor: 'var(--border-light)' }}>
+                    RFQ Details
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <EditField label="Response Deadline"    value={meta.response_deadline}    type="date"    required onChange={v => onMetaChange('response_deadline', v)} />
+                    <EditField label="Shipping Terms"       value={meta.shipping_terms}       required onChange={v => onMetaChange('shipping_terms', v)} />
+                    <EditField label="Quality Requirements" value={meta.quality_requirements} required onChange={v => onMetaChange('quality_requirements', v)} />
+                </div>
+            </div>
+
+            <div>
+                <p className="text-xs font-semibold uppercase tracking-wider mb-3 pb-2 border-b"
+                    style={{ color: 'var(--text-tertiary)', borderColor: 'var(--border-light)' }}>
+                    Assign Suppliers
+                </p>
+
+                {supplierIds.length === 0 && (
+                    <p className="text-xs mb-3" style={{ color: 'var(--brand-danger)' }}>
+                        At least one supplier required to submit for approval.
+                    </p>
+                )}
+
+                {supplierIds.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mb-3">
+                        {supplierIds.map(sid => {
+                            const s = availableSuppliers.find(x => x.id === sid);
+                            const label = s?.name ?? s?.username ?? `ID ${sid}`;
+                            return (
+                                <span key={sid} className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs border"
+                                    style={{ color: 'var(--status-active)', borderColor: 'var(--status-active)', backgroundColor: 'rgba(16,185,129,0.08)' }}>
+                                    <Building2 size={11} />
+                                    {label}
+                                    <button onClick={() => onRemoveSupplier(sid)} style={{ color: 'var(--text-tertiary)' }}>
+                                        <X size={11} />
+                                    </button>
+                                </span>
+                            );
+                        })}
+                    </div>
+                )}
+
+                <input
+                    type="text"
+                    value={supplierSearch}
+                    onChange={e => onSearchChange(e.target.value)}
+                    placeholder={suppliersLoading ? 'Loading suppliers…' : 'Search to add a supplier…'}
+                    disabled={suppliersLoading}
+                    className="w-full px-3 py-2 text-sm border mb-1 focus:outline-none focus:ring-1 focus:ring-brand-accent"
+                    style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border-default)', color: 'var(--text-primary)' }}
+                />
+                <div className="max-h-40 overflow-y-auto border" style={{ borderColor: 'var(--border-light)' }}>
+                    {availableSuppliers
+                        .filter(s => !supplierIds.includes(s.id))
+                        .filter(s => {
+                            const q = supplierSearch.toLowerCase();
+                            return !q || (s.name ?? '').toLowerCase().includes(q) || (s.username ?? '').toLowerCase().includes(q);
+                        })
+                        .map(s => (
+                            <button key={s.id} onClick={() => onAddSupplier(s.id)}
+                                className="w-full text-left px-3 py-2 text-sm hover:bg-surface-hover flex justify-between items-center border-b last:border-0"
+                                style={{ color: 'var(--text-primary)', borderColor: 'var(--border-light)' }}>
+                                <span className="font-medium">{s.name || s.username}</span>
+                                <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{s.email}</span>
+                            </button>
+                        ))}
+                    {!suppliersLoading && availableSuppliers.filter(s => !supplierIds.includes(s.id)).length === 0 && (
+                        <p className="px-3 py-2 text-xs" style={{ color: 'var(--text-tertiary)' }}>No more suppliers available.</p>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ── Stage section header ───────────────────────────────────────────────────────
+
+function StageHeader({ icon: Icon, label, accent, approved, canEdit, onEdit }) {
+    return (
+        <div className="flex items-center justify-between px-5 py-3 border-b"
+            style={{ backgroundColor: 'var(--background-secondary)', borderColor: 'var(--border-light)' }}>
+            <div className="flex items-center gap-2">
+                <div className="w-1 h-4 flex-shrink-0" style={{ backgroundColor: accent }} />
+                <Icon size={14} style={{ color: accent }} />
+                <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
+                    {label}
+                </span>
+                {approved && (
+                    <span className="ml-2 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 border"
+                        style={{ color: 'var(--status-active)', borderColor: 'var(--status-active)', backgroundColor: 'rgba(16,185,129,0.08)' }}>
+                        <CheckCircle size={10} /> Approved
+                    </span>
+                )}
+            </div>
+            {canEdit && (
+                <button onClick={onEdit}
+                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 border transition-colors"
+                    style={{ color: 'var(--brand-accent)', borderColor: 'var(--brand-accent)', backgroundColor: 'transparent' }}
+                    onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(59,130,246,0.06)'}
+                    onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}>
+                    <Edit size={12} /> Edit
+                </button>
+            )}
+        </div>
+    );
+}
+
+// ── Main component ─────────────────────────────────────────────────────────────
+
 export default function RFQDetails() {
     const { id } = useParams();
     const navigate = useNavigate();
     const location = useLocation();
+
     const [rfqData, setRfqData] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [previewFile, setPreviewFile] = useState(null);
-    const [selectedResponse, setSelectedResponse] = useState(null);
     const [error, setError] = useState(null);
     const [actionError, setActionError] = useState(null);
     const [actionLoading, setActionLoading] = useState(false);
 
-    // Edit mode states
-    const [editingSection, setEditingSection] = useState(null);
+    const [modal, setModal] = useState(null); // 'specs' | 'purchases'
     const [editData, setEditData] = useState({});
     const [isSaving, setIsSaving] = useState(false);
 
-    // Supplier picker state (stage2)
     const [availableSuppliers, setAvailableSuppliers] = useState([]);
     const [suppliersLoading, setSuppliersLoading] = useState(false);
     const [supplierSearch, setSupplierSearch] = useState('');
 
-    // Determine user role from URL path
+    const [expandedSupplier, setExpandedSupplier] = useState(null);
+
     const userRole = location.pathname.includes('/Purchases/') ? 'purchases'
         : location.pathname.includes('/Suppliers/') ? 'suppliers'
             : 'industrialization';
 
-    // Detect admin rank from stored user (to show Approve/Reject/Final Award buttons)
     const storedUser = (() => { try { return JSON.parse(localStorage.getItem('user') || '{}'); } catch { return {}; } })();
-    const userGroups = storedUser.grupos ?? [];
-    const isAdmin = userGroups.some(g => g.includes('_Admin') || g === 'SuperAdmin');
-    const storedUsername = storedUser.username ?? '';
+    const isAdmin = (storedUser.grupos ?? []).some(g => g.includes('_Admin') || g === 'SuperAdmin');
+
+    // ── Data ──────────────────────────────────────────────────────────────────
 
     const reloadRFQ = () => {
         setLoading(true);
         setError(null);
         getRFQById(id)
-            .then(rfq => {
-                setRfqData(rfq);
-                const firstDoc = rfq?.stage1?.data?.documents?.find(d => d.is3D);
-                if (firstDoc) setPreviewFile(firstDoc);
-            })
+            .then(setRfqData)
             .catch(err => { setError(err.message); setRfqData(null); })
             .finally(() => setLoading(false));
     };
-
     useEffect(() => { reloadRFQ(); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Generic wrapper for state-transition actions
-    const runAction = async (fn, ...args) => {
+    const runAction = async (fn) => {
         setActionLoading(true);
         setActionError(null);
+        try { await fn(); await reloadRFQ(); }
+        catch (err) { setActionError(err.message); }
+        finally { setActionLoading(false); }
+    };
+
+    // ── Modal management ──────────────────────────────────────────────────────
+
+    const openSpecsModal = () => {
+        setEditData({ specs: { ...(rfqData.stage1?.data?.specifications ?? {}) } });
+        setModal('specs');
+    };
+
+    const openPurchasesModal = () => {
+        setEditData({
+            meta: {
+                response_deadline:    rfqData.response_deadline    ?? '',
+                shipping_terms:       rfqData.shipping_terms       ?? '',
+                quality_requirements: rfqData.quality_requirements ?? '',
+            },
+            supplierIds: (rfqData.stage2?.data?.suppliers ?? []).map(s => s.id).filter(Boolean),
+        });
+        setSuppliersLoading(true);
+        setSupplierSearch('');
+        getSuppliers()
+            .then(setAvailableSuppliers)
+            .catch(() => {})
+            .finally(() => setSuppliersLoading(false));
+        setModal('purchases');
+    };
+
+    const closeModal = () => { setModal(null); setEditData({}); };
+
+    const saveSpecs = async () => {
+        setIsSaving(true);
         try {
-            await fn(...args);
-            await reloadRFQ();
-        } catch (err) {
-            setActionError(err.message);
-        } finally {
-            setActionLoading(false);
-        }
+            const payload = rfqData.type === 'mold'
+                ? { mold_info_p1: editData.specs }
+                : { die_trim: editData.specs };
+            await saveSpecifications(rfqData.id, payload);
+            closeModal();
+            reloadRFQ();
+        } catch (err) { alert(`Save failed: ${err.message}`); }
+        finally { setIsSaving(false); }
     };
 
-    // Status badge — uses snake_case keys from backend + "Draft"/"Final Quote" for response cards
-    const getStatusBadgeStyle = (status) => {
-        const styles = {
-            [STATUS.IND_DRAFT]:             { color: 'var(--text-tertiary)',       backgroundColor: 'var(--surface-disabled)' },
-            [STATUS.SENT_TO_PURCHASES]:     { color: 'var(--status-pending)',      backgroundColor: 'rgba(245, 158, 11, 0.1)' },
-            [STATUS.PURCHASES_DRAFT]:       { color: 'var(--text-tertiary)',       backgroundColor: 'var(--surface-disabled)' },
-            [STATUS.SENT_TO_SUPPLIERS]:     { color: 'var(--status-pending)',      backgroundColor: 'rgba(245, 158, 11, 0.1)' },
-            [STATUS.WAITING_FOR_SUPPLIERS]: { color: 'var(--status-pending)',      backgroundColor: 'rgba(245, 158, 11, 0.1)' },
-            [STATUS.SUPPLIER_SELECTED]:     { color: 'var(--status-active)',       backgroundColor: 'rgba(16, 185, 129, 0.1)' },
-            [STATUS.RFQ_CLOSED]:            { color: 'var(--status-cancelled)',    backgroundColor: 'rgba(239, 68, 68, 0.1)' },
-            'Draft':      { color: 'var(--text-tertiary)',    backgroundColor: 'var(--surface-disabled)' },
-            'Final Quote':{ color: 'var(--status-active)',    backgroundColor: 'rgba(16, 185, 129, 0.1)' },
-            'Responded':  { color: 'var(--status-completed)', backgroundColor: 'rgba(59, 130, 246, 0.1)' },
-            'Selected':   { color: 'var(--status-active)',    backgroundColor: 'rgba(16, 185, 129, 0.1)' },
-            'Pending':    { color: 'var(--status-pending)',   backgroundColor: 'rgba(245, 158, 11, 0.1)' },
-        };
-        return styles[status] || { color: 'var(--text-tertiary)', backgroundColor: 'var(--surface-disabled)' };
+    const saveAndSubmitSpecs = async () => {
+        setIsSaving(true);
+        try {
+            const payload = rfqData.type === 'mold'
+                ? { mold_info_p1: editData.specs }
+                : { die_trim: editData.specs };
+            await saveSpecifications(rfqData.id, payload);
+            await submitRFQForReview(rfqData.id, rfqData.type, rfqData.title ?? '');
+            closeModal();
+            reloadRFQ();
+        } catch (err) { alert(`Submit failed: ${err.message}`); }
+        finally { setIsSaving(false); }
     };
 
-    const getPriorityStyle = (priority) => {
-        const styles = {
-            High:     { color: 'var(--priority-high)',   backgroundColor: 'rgba(239, 68, 68, 0.1)' },
-            Critical: { color: 'var(--priority-high)',   backgroundColor: 'rgba(239, 68, 68, 0.1)' },
-            Medium:   { color: 'var(--priority-medium)', backgroundColor: 'rgba(245, 158, 11, 0.1)' },
-            Low:      { color: 'var(--priority-low)',    backgroundColor: 'rgba(16, 185, 129, 0.1)' },
-        };
-        return styles[priority] || styles.Medium;
+    const savePurchases = async (isDraft) => {
+        setIsSaving(true);
+        try {
+            await savePurchasesMetadata(rfqData.id, editData.meta);
+            await assignSuppliers(rfqData.id, editData.supplierIds ?? [], isDraft);
+            closeModal();
+            reloadRFQ();
+        } catch (err) { alert(`Save failed: ${err.message}`); }
+        finally { setIsSaving(false); }
     };
 
-    const canEditSection = (section) => {
-        if (userRole === 'industrialization' && section === 'stage1') return true;
-        if (userRole === 'purchases'        && section === 'stage2') return true;
-        if (userRole === 'suppliers'        && section === 'stage3') return true;
-        return false;
+    // ── Derived ───────────────────────────────────────────────────────────────
+
+    const stage1RequiredFilled = () => {
+        const s = editData.specs ?? {};
+        return (REQUIRED_SPEC_FIELDS[rfqData?.type] ?? []).every(f => s[f] && String(s[f]).trim());
     };
 
-    const canSeeSection = (section) => {
-        if (userRole === 'suppliers' && section === 'stage2') return false;
-        return true;
+    const purchasesAllFilled = () => {
+        const { meta = {}, supplierIds = [] } = editData;
+        return meta.response_deadline && meta.shipping_terms && meta.quality_requirements && supplierIds.length > 0;
     };
 
-    const shouldShowCreateResponse = () => {
+    const shouldShowQuoteForm = () => {
         if (userRole !== 'suppliers' || !rfqData) return false;
         return rfqData.status === STATUS.SENT_TO_SUPPLIERS
             || rfqData.status === STATUS.WAITING_FOR_SUPPLIERS;
     };
 
-    const hasSupplierResponse = () =>
-        rfqData?.stage3?.data?.responses?.some(r => r.status === 'Final Quote') ?? false;
-
-    const startEditing = (section) => {
-        if (section === 'stage1') {
-            setEditData({ specifications: { ...(rfqData.stage1?.data?.specifications ?? {}) } });
-        } else if (section === 'stage2') {
-            const currentIds = (rfqData.stage2?.data?.suppliers ?? []).map(s => s.id).filter(Boolean);
-            setEditData({
-                metadata: {
-                    response_deadline: rfqData.response_deadline ?? '',
-                    shipping_terms: rfqData.shipping_terms ?? '',
-                    quality_requirements: rfqData.quality_requirements ?? '',
-                },
-                supplierIds: currentIds,
-            });
-            // Load available suppliers for the picker
-            if (userRole === 'purchases') {
-                setSuppliersLoading(true);
-                setSupplierSearch('');
-                getSuppliers()
-                    .then(list => setAvailableSuppliers(list))
-                    .catch(() => {})
-                    .finally(() => setSuppliersLoading(false));
-            }
-        } else if (section === 'stage3') {
-            setEditData({ responses: JSON.parse(JSON.stringify(rfqData.stage3?.data?.responses ?? [])) });
-        }
-        setEditingSection(section);
-    };
-
-    const addSupplierToRFQ = (id) =>
-        setEditData(prev => ({ ...prev, supplierIds: [...(prev.supplierIds ?? []), id] }));
-
-    const removeSupplierFromRFQ = (id) =>
-        setEditData(prev => ({ ...prev, supplierIds: (prev.supplierIds ?? []).filter(x => x !== id) }));
-
-    const saveSection = async () => {
-        setIsSaving(true);
-        try {
-            if (editingSection === 'stage1') {
-                const rfqType = rfqData.type;
-                const payload = rfqType === 'mold'
-                    ? { mold_info_p1: editData.specifications }
-                    : { die_trim: editData.specifications };
-                await saveSpecifications(rfqData.id, payload);
-                setRfqData(prev => ({
-                    ...prev,
-                    stage1: { ...prev.stage1, data: { ...prev.stage1.data, specifications: { ...editData.specifications } } },
-                }));
-
-            } else if (editingSection === 'stage2') {
-                await savePurchasesMetadata(rfqData.id, editData.metadata);
-                setRfqData(prev => ({
-                    ...prev,
-                    stage2: { ...prev.stage2, data: { ...prev.stage2.data, metadata: { ...editData.metadata } } },
-                }));
-
-            } else if (editingSection === 'stage3') {
-                // Determine if any response is being submitted as Final Quote
-                const hasFinalQuote = editData.responses?.some(r => r.status === 'Final Quote');
-                const isDraft = !hasFinalQuote;
-
-                // Build minimal cost payload — Elaborated_by is set server-side from JWT
-                const costPayload = rfqData.type === 'mold'
-                    ? { mold_cost_p1: { Company: storedUsername, Country: 'MX', Base_currency: 'USD' } }
-                    : { die_cost_p1: { Company: storedUsername, Country: 'MX' } };
-
-                await submitQuote(rfqData.id, { is_draft: isDraft, ...costPayload });
-
-                // Optimistic local update
-                setRfqData(prev => ({
-                    ...prev,
-                    stage3: { ...prev.stage3, data: { ...prev.stage3.data, responses: [...editData.responses] } },
-                }));
-            }
-            setEditingSection(null);
-            setEditData({});
-        } catch (err) {
-            alert(`Error saving: ${err.message}`);
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-    const cancelEditing = () => {
-        setEditingSection(null);
-        setEditData({});
-    };
-
-    const saveAndSubmit = async () => {
-        setIsSaving(true);
-        try {
-            if (editingSection === 'stage1') {
-                const rfqType = rfqData.type;
-                const payload = rfqType === 'mold'
-                    ? { mold_info_p1: editData.specifications }
-                    : { die_trim: editData.specifications };
-                await saveSpecifications(rfqData.id, payload);
-            }
-            await submitRFQForReview(rfqData.id, rfqData.type, rfqData.title ?? '');
-            setEditingSection(null);
-            setEditData({});
-            reloadRFQ();
-        } catch (err) {
-            alert(`Error: ${err.message}`);
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-    const handleDocUpload = async (file, type) => {
-        try {
-            await uploadDocument(rfqData.id, file, type);
-            reloadRFQ();
-        } catch (err) {
-            alert(`Upload failed: ${err.message}`);
-        }
-    };
-
-    // Purchases stage2 — save metadata + change status + navigate
-    const savePurchaseDraft = async () => {
-        setIsSaving(true);
-        try {
-            await savePurchasesMetadata(rfqData.id, editData.metadata);
-            const supplierIds = editData.supplierIds ?? [];
-            await assignSuppliers(rfqData.id, supplierIds, true);   // is_draft=true → submitted_for_review=false
-            setEditingSection(null);
-            setEditData({});
-            navigate('/Purchases/Drafts');
-        } catch (err) {
-            alert(`Error: ${err.message}`);
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-    const submitForApproval = async () => {
-        setIsSaving(true);
-        try {
-            await savePurchasesMetadata(rfqData.id, editData.metadata);
-            const supplierIds = editData.supplierIds ?? [];
-            await assignSuppliers(rfqData.id, supplierIds, false);  // is_draft=false → submitted_for_review=true
-            setEditingSection(null);
-            setEditData({});
-            navigate('/Purchases/Drafts');
-        } catch (err) {
-            alert(`Error: ${err.message}`);
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-    const sendToSuppliers = async () => {
-        setIsSaving(true);
-        try {
-            await savePurchasesMetadata(rfqData.id, editData.metadata);
-            await approveSupplierList(rfqData.id, 'aprobar');
-            setEditingSection(null);
-            setEditData({});
-            navigate('/Purchases/All-RFQ');
-        } catch (err) {
-            alert(`Error: ${err.message}`);
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-    const deleteResponse = (responseId) => {
-        if (window.confirm('Are you sure you want to delete this response?')) {
-            setRfqData(prev => ({
-                ...prev,
-                stage3: {
-                    ...prev.stage3,
-                    data: {
-                        ...prev.stage3.data,
-                        responses: prev.stage3.data.responses.filter(r => r.id !== responseId),
-                    },
-                },
-            }));
-            if (selectedResponse?.id === responseId) setSelectedResponse(null);
-        }
-    };
-
-    const createNewResponse = () => {
-        const newResponse = {
-            id: Date.now(),
-            supplier: 'New Supplier',
-            contact: '',
-            email: '',
-            phone: '',
-            status: 'Draft',
-            amount: null,
-            unitPrice: null,
-            deliveryTime: '',
-            submittedDate: null,
-            documents: [],
-            details: {},
-        };
-        setRfqData(prev => ({
-            ...prev,
-            stage3: {
-                ...(prev.stage3 ?? { name: 'Suppliers', data: { responses: [], statistics: {} } }),
-                data: {
-                    ...(prev.stage3?.data ?? { responses: [] }),
-                    responses: [...(prev.stage3?.data?.responses ?? []), newResponse],
-                },
-            },
-        }));
-    };
-
-    const updateSpecification = (key, value) =>
-        setEditData(prev => ({ ...prev, specifications: { ...prev.specifications, [key]: value } }));
-
-    const updateMetadata = (key, value) =>
-        setEditData(prev => ({ ...prev, metadata: { ...prev.metadata, [key]: value } }));
-
-    const updateResponseField = (responseId, field, value) =>
-        setEditData(prev => ({
-            ...prev,
-            responses: prev.responses.map(r => r.id === responseId ? { ...r, [field]: value } : r),
-        }));
-
-    const deleteResponseInEdit = (responseId) =>
-        setEditData(prev => ({
-            ...prev,
-            responses: prev.responses.filter(r => r.id !== responseId),
-        }));
-
-    const statusStyle   = getStatusBadgeStyle(rfqData?.status);
-    const priorityStyle = getPriorityStyle(rfqData?.priority);
-    const hasStage1 = !!rfqData?.stage1;
-    const hasStage2 = !!rfqData?.stage2;
-    const hasStage3 = !!rfqData?.stage3;
+    // ── Guards ────────────────────────────────────────────────────────────────
 
     if (loading) {
         return (
             <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--background-secondary)' }}>
                 <div className="text-center">
-                    <div className="animate-spin w-8 h-8 border-2 border-brand-accent border-t-transparent" />
-                    <p className="text-sm mt-2" style={{ color: 'var(--text-tertiary)' }}>Loading RFQ data...</p>
+                    <div className="animate-spin w-8 h-8 border-2 border-t-transparent mx-auto mb-3"
+                        style={{ borderColor: 'var(--brand-accent)', borderTopColor: 'transparent' }} />
+                    <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>Loading RFQ…</p>
                 </div>
             </div>
         );
@@ -374,599 +596,440 @@ export default function RFQDetails() {
             <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--background-secondary)' }}>
                 <div className="text-center">
                     <Package size={48} style={{ color: 'var(--text-tertiary)' }} />
-                    <p className="text-sm mt-2" style={{ color: 'var(--text-secondary)' }}>
-                        {error ?? 'RFQ not found'}
-                    </p>
+                    <p className="text-sm mt-2" style={{ color: 'var(--text-secondary)' }}>{error ?? 'RFQ not found'}</p>
                     <button onClick={() => navigate(-1)} className="mt-4 text-sm" style={{ color: 'var(--brand-accent)' }}>Go Back</button>
                 </div>
             </div>
         );
     }
 
+    const typeColor = rfqData.type === 'mold'
+        ? { color: '#60a5fa', bg: 'rgba(96,165,250,0.12)', border: 'rgba(96,165,250,0.35)' }
+        : { color: '#34d399', bg: 'rgba(52,211,153,0.12)', border: 'rgba(52,211,153,0.35)' };
+
+    const priorityMap = { High: 'var(--priority-high)', Critical: 'var(--priority-high)', Medium: 'var(--priority-medium)', Low: 'var(--priority-low)' };
+    const specs    = rfqData.stage1?.data?.specifications ?? {};
+    const specGroups = SPEC_GROUPS[rfqData.type] ?? [];
+
+    const canEditStage1 = userRole === 'industrialization'
+        && (rfqData.status === STATUS.IND_DRAFT);
+    const canEditStage2 = userRole === 'purchases'
+        && (rfqData.status === STATUS.SENT_TO_PURCHASES || rfqData.status === STATUS.PURCHASES_DRAFT);
+
     return (
         <div className="min-h-screen" style={{ backgroundColor: 'var(--background-secondary)' }}>
             <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                {/* Header */}
-                <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
-                    <div className="flex items-center gap-4">
-                        <button onClick={() => navigate(-1)} className="p-2 hover:bg-surface-hover transition-colors" style={{ color: 'var(--text-secondary)' }}>
-                            <ArrowLeft size={20} />
+
+                {/* ── Header ─────────────────────────────────────────────── */}
+                <div className="flex items-start justify-between mb-6 flex-wrap gap-4">
+                    <div className="flex items-start gap-3">
+                        <button onClick={() => navigate(-1)} className="p-2 mt-1" style={{ color: 'var(--text-secondary)' }}>
+                            <ArrowLeft size={18} />
                         </button>
                         <div>
-                            <div className="flex items-center gap-3 flex-wrap">
-                                <h1 className="text-2xl font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>
-                                    {rfqData.title}
-                                </h1>
-                                <span className="px-2.5 py-0.5 text-xs font-medium border" style={statusStyle}>
+                            <div className="flex flex-wrap items-center gap-2 mb-1">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider border"
+                                    style={{ color: typeColor.color, backgroundColor: typeColor.bg, borderColor: typeColor.border }}>
+                                    <Factory size={10} /> {rfqData.type}
+                                </span>
+                                <span className="px-2.5 py-0.5 text-xs font-medium border" style={getStatusStyle(rfqData.status)}>
                                     {STATUS_LABEL[rfqData.status] ?? rfqData.status}
                                 </span>
+                                {rfqData.submitted_for_review && (
+                                    <span className="px-2 py-0.5 text-[10px] font-medium border"
+                                        style={{ color: 'var(--status-pending)', backgroundColor: 'rgba(245,158,11,0.08)', borderColor: 'var(--status-pending)' }}>
+                                        Pending Review
+                                    </span>
+                                )}
                                 {rfqData.priority && (
-                                    <span className="px-2.5 py-0.5 text-xs font-medium border" style={priorityStyle}>
+                                    <span className="px-2.5 py-0.5 text-xs font-medium border"
+                                        style={{ color: priorityMap[rfqData.priority] ?? 'var(--text-tertiary)', backgroundColor: 'transparent', borderColor: priorityMap[rfqData.priority] ?? 'var(--border-default)' }}>
                                         {rfqData.priority}
                                     </span>
                                 )}
                             </div>
-                            <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
-                                ID: {rfqData.id} • Modified: {rfqData.lastModified} • By: {rfqData.createdBy}
+                            <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{rfqData.title}</h1>
+                            <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>
+                                RFQ #{rfqData.id} · Last modified: {rfqData.lastModified} · Created by: {rfqData.createdBy}
                             </p>
                         </div>
                     </div>
-                    <div className="flex gap-2">
-                        <Button variant="outline"><Download size={16} /> Export</Button>
-                    </div>
                 </div>
 
-                {/* Banner de Adjudicacion */}
+                {/* ── Winner banner ───────────────────────────────────────── */}
                 {userRole === 'suppliers' && rfqData.is_winner && (
-                    <div className="mb-6 flex items-start gap-4 p-5 rounded-lg border shadow-sm" 
-                         style={{ 
-                             backgroundColor: 'rgba(16, 185, 129, 0.08)', 
-                             borderColor: 'rgba(16, 185, 129, 0.3)' 
-                         }}>
-                        <div className="p-3 rounded-full" style={{ backgroundColor: 'var(--status-active)' }}>
-                            <Trophy size={28} className="text-white" />
+                    <div className="mb-6 flex items-start gap-4 p-5 border"
+                        style={{ backgroundColor: 'rgba(16,185,129,0.06)', borderColor: 'rgba(16,185,129,0.3)' }}>
+                        <div className="p-2.5 flex-shrink-0" style={{ backgroundColor: 'var(--status-active)' }}>
+                            <Trophy size={22} color="#fff" />
                         </div>
                         <div>
-                            <h2 className="text-lg font-bold" style={{ color: 'var(--status-active)' }}>
-                                ¡Felicidades! Cotización Adjudicada
+                            <h2 className="text-base font-bold" style={{ color: 'var(--status-active)' }}>
+                                Congratulations — Quote Awarded
                             </h2>
                             <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
-                                Bocar Group ha aprobado el fallo gerencial a tu favor y has sido seleccionado como el proveedor oficial para este requerimiento. 
-                                El equipo de Compras se pondrá en contacto contigo a la brevedad para la emisión de la Orden de Compra (PO) y los siguientes pasos.
+                                BOCAR Group has selected your quote. The Purchases team will contact you.
                             </p>
                         </div>
                     </div>
                 )}
 
-                {/* RFQ meta info */}
-                <Card className="mb-6">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                        <div><span className="text-xs uppercase tracking-wider block" style={{ color: 'var(--text-tertiary)' }}>Type</span>{rfqData.type}</div>
-                        <div><span className="text-xs uppercase tracking-wider block" style={{ color: 'var(--text-tertiary)' }}>Category</span>{rfqData.category || '—'}</div>
-                        <div><span className="text-xs uppercase tracking-wider block" style={{ color: 'var(--text-tertiary)' }}>For Review</span>{rfqData.submitted_for_review ? 'Yes' : 'No'}</div>
-                        {rfqData.is_winner !== null && rfqData.is_winner !== undefined && (
-                            <div><span className="text-xs uppercase tracking-wider block" style={{ color: 'var(--text-tertiary)' }}>Your Bid</span>
-                                {rfqData.is_winner ? 'Selected' : 'Not selected'}
-                            </div>
-                        )}
-                    </div>
-                </Card>
+                <div className="space-y-5">
 
-                <div className="space-y-6">
-                    {/* Stage 1: Industrialization */}
-                    {hasStage1 && canSeeSection('stage1') && (
-                        <Card title="1. Industrialization">
-                            {rfqData.stage1.approvedBy && (
-                                <div className="mb-4 p-3 border-l-4 flex justify-between items-center" style={{ borderLeftColor: 'var(--brand-accent)', backgroundColor: 'var(--background-tertiary)' }}>
-                                    <div>
-                                        <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Approved by: {rfqData.stage1.approvedBy.name}</p>
-                                        <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{rfqData.stage1.approvedBy.role}</p>
-                                    </div>
-                                    {rfqData.stage1.approvedBy.approvedDate && <CheckCircle size={20} style={{ color: 'var(--status-completed)' }} />}
-                                </div>
-                            )}
-
-                            {/* Specifications */}
-                            <div className="mb-6">
-                                <div className="flex justify-between items-center mb-3">
-                                    <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>Technical Specifications</h3>
-                                    {canEditSection('stage1') && editingSection !== 'stage1' && (
-                                        <button onClick={() => startEditing('stage1')} className="text-xs flex items-center gap-1" style={{ color: 'var(--brand-accent)' }}>
-                                            <Edit size={12} /> Edit
-                                        </button>
-                                    )}
-                                </div>
-
-                                {editingSection === 'stage1' ? (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                                        {Object.entries(editData.specifications || {}).map(([key, value]) => (
-                                            <div key={key} className="p-3 border border-border-default">
-                                                <label className="text-xs block" style={{ color: 'var(--text-tertiary)' }}>{key}</label>
-                                                <input
-                                                    type="text"
-                                                    value={value ?? ''}
-                                                    onChange={(e) => updateSpecification(key, e.target.value)}
-                                                    className="w-full mt-1 px-2 py-1 text-sm border border-border-default focus:outline-none focus:ring-1 focus:ring-brand-accent bg-surface"
-                                                    style={{ color: 'var(--text-primary)' }}
-                                                />
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                                        {Object.entries(rfqData.stage1.data.specifications ?? {})
-                                            .filter(([key]) => !(userRole === 'suppliers' && ['CUST', 'ELAB'].includes(key)))
-                                            .map(([key, value]) => (
-                                            <div key={key} className="p-3 border border-border-default">
-                                                <label className="text-xs block" style={{ color: 'var(--text-tertiary)' }}>{key}</label>
-                                                <p className="text-sm mt-1 font-medium" style={{ color: 'var(--text-primary)' }}>{String(value ?? '—')}</p>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Documents */}
-                            <div>
-                                <h3 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text-tertiary)' }}>Documents</h3>
-
-                                {previewFile?.is3D && (
-                                    <div className="mb-4 border border-border-default">
-                                        <div className="p-2 border-b" style={{ backgroundColor: 'var(--background-tertiary)' }}>
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-sm">3D Preview: {previewFile.name}</span>
-                                                <button onClick={() => setPreviewFile(null)} className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Close</button>
-                                            </div>
-                                        </div>
-                                        <div className="p-8 flex justify-center items-center" style={{ minHeight: '250px', backgroundColor: 'var(--surface-hover)' }}>
-                                            <div className="text-center">
-                                                <Package size={48} style={{ color: 'var(--text-tertiary)' }} />
-                                                <p className="text-sm mt-2">3D Viewer Placeholder</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-
-                                <div className="space-y-2">
-                                    {(rfqData.stage1.data.documents ?? []).map((doc) => (
-                                        <div key={doc.id} className="flex justify-between items-center p-3 border border-border-default hover:bg-surface-hover">
-                                            <div className="flex items-center gap-2">
-                                                {doc.is3D ? <Package size={14} style={{ color: 'var(--brand-accent)' }} /> : <FileText size={14} style={{ color: 'var(--text-tertiary)' }} />}
-                                                <div>
-                                                    <span className="text-sm">{doc.name}</span>
-                                                    <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{doc.date} • by {doc.uploadedBy}</p>
+                    {/* ─── Stage 1: Industrialization ─────────────────────── */}
+                    {rfqData.stage1 && (
+                        <div className="border" style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border-default)' }}>
+                            <StageHeader
+                                icon={Factory} label="Industrialization" accent="#38bdf8"
+                                approved={!!rfqData.stage1.approvedBy}
+                                canEdit={canEditStage1}
+                                onEdit={openSpecsModal}
+                            />
+                            <div className="p-5 space-y-6">
+                                <div>
+                                    <SubLabel icon={Layers} text="Specifications" accent="#38bdf8" />
+                                    {specGroups.length > 0
+                                        ? specGroups.map(group => (
+                                            <SpecGroupView key={group.id} group={group} specs={specs} userRole={userRole} />
+                                        ))
+                                        : Object.keys(specs).length === 0
+                                            ? <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>No specifications recorded yet.{canEditStage1 && <> Click <strong>Edit</strong> to add them.</>}</p>
+                                            : (
+                                                <div className="border overflow-hidden" style={{ borderColor: 'var(--border-light)' }}>
+                                                    {Object.entries(specs)
+                                                        .filter(([k]) => !(userRole === 'suppliers' && ['CUST', 'ELAB'].includes(k)))
+                                                        .map(([k, v], i) => <PropRow key={k} label={k} value={v} even={i % 2 === 1} />)}
                                                 </div>
-                                            </div>
-                                            <div className="flex gap-3">
-                                                {doc.is3D && <button onClick={() => setPreviewFile(doc)} className="text-xs" style={{ color: 'var(--brand-accent)' }}>Preview 3D</button>}
-                                                <button className="text-xs" style={{ color: 'var(--brand-accent)' }}
-                                                    onClick={() => downloadDocument(rfqData.id, doc.id, doc.name).catch(e => alert(e.message))}>
-                                                    Download
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ))}
-                                    {(rfqData.stage1.data.documents ?? []).length === 0 && (
-                                        <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>No documents attached.</p>
-                                    )}
+                                            )
+                                    }
                                 </div>
 
-                                {editingSection === 'stage1' && userRole === 'industrialization' && rfqData.status === STATUS.IND_DRAFT && (
-                                    <div className="mt-4 pt-3 border-t">
-                                        <h4 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text-tertiary)' }}>
-                                            <Upload size={12} className="inline mr-1" />
-                                            Replace / Add Documents
-                                        </h4>
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                            <UploadCard
-                                                title="Technical PDF"
-                                                subtitle="PDF documents"
-                                                acceptedFileTypes={['pdf']}
-                                                maxFileSize={20}
-                                                expectedFileType="pdf"
-                                                onFileUpload={(file) => handleDocUpload(file, 'pdf')}
-                                            />
-                                            <UploadCard
-                                                title="Presentation (PPT)"
-                                                subtitle="PPT, PPTX"
-                                                acceptedFileTypes={['ppt', 'pptx']}
-                                                maxFileSize={20}
-                                                expectedFileType="presentation"
-                                                onFileUpload={(file) => handleDocUpload(file, 'presentation')}
-                                            />
-                                            <UploadCard
-                                                title="CAD / 3D Model"
-                                                subtitle="STEP, STL, DWG, OBJ"
-                                                acceptedFileTypes={['step', 'stl', 'dwg', 'obj', 'stp']}
-                                                maxFileSize={100}
-                                                expectedFileType="3d"
-                                                onFileUpload={(file) => handleDocUpload(file, '3d')}
-                                            />
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-
-                            {editingSection === 'stage1' && (
-                                <div className="flex justify-end gap-2 mt-4 pt-3 border-t flex-wrap">
-                                    <Button variant="outline" size="sm" onClick={cancelEditing} disabled={isSaving}>Cancel</Button>
-                                    <Button variant="outline" size="sm" onClick={saveSection} disabled={isSaving}>{isSaving ? 'Saving...' : 'Save Changes'}</Button>
-                                    {rfqData.status === STATUS.IND_DRAFT && userRole === 'industrialization' && (
-                                        <Button variant="primary" size="sm" onClick={saveAndSubmit} disabled={isSaving}>
-                                            {isSaving ? 'Submitting...' : 'Submit for Approval'}
-                                        </Button>
-                                    )}
-                                </div>
-                            )}
-                        </Card>
-                    )}
-
-                    {/* Stage 2: Purchases */}
-                    {hasStage2 && canSeeSection('stage2') && (
-                        <Card title="2. Purchases">
-                            <div className="overflow-x-auto mb-6">
-                                <div className="flex justify-between items-center mb-3">
-                                    <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>Suppliers List</h3>
-                                    {canEditSection('stage2') && editingSection !== 'stage2' && (
-                                        <button onClick={() => startEditing('stage2')} className="text-xs flex items-center gap-1" style={{ color: 'var(--brand-accent)' }}>
-                                            <Edit size={12} /> Edit
-                                        </button>
-                                    )}
-                                </div>
-                                <table className="min-w-full divide-y" style={{ divideColor: 'var(--border-default)' }}>
-                                    <thead style={{ backgroundColor: 'var(--background-tertiary)' }}>
-                                        <tr>
-                                            <th className="px-3 py-2 text-left text-xs">Supplier</th>
-                                            <th className="px-3 py-2 text-left text-xs">Email</th>
-                                            <th className="px-3 py-2 text-left text-xs">Status</th>
-                                            <th className="px-3 py-2 text-left text-xs">Responded</th>
-                                            <th className="px-3 py-2 text-left text-xs">Deadline</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {(rfqData.stage2.data.suppliers ?? []).map((s) => (
-                                            <tr key={s.id} className="border-b border-border-light">
-                                                <td className="px-3 py-2 text-sm">{s.name}</td>
-                                                <td className="px-3 py-2 text-sm">{s.email || '—'}</td>
-                                                <td className="px-3 py-2 text-sm">
-                                                    <span className="px-2 py-0.5 text-xs border" style={getStatusBadgeStyle(s.status)}>{s.status}</span>
-                                                </td>
-                                                <td className="px-3 py-2 text-sm">{s.has_responded ? 'Yes' : '—'}</td>
-                                                <td className="px-3 py-2 text-sm">{s.deadline || '—'}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-
-                            <div>
-                                <h3 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text-tertiary)' }}>RFQ Details</h3>
-                                {editingSection === 'stage2' ? (
-                                    <div className="space-y-4">
-                                        
-
-{rfqData?.ia_predictions?.predictions ? (
-    <div className="mb-4">
-        {/* Aquí enviamos la lista tal cual */}
-        <IARecommendations data={rfqData.ia_predictions.predictions} />
-    </div>
-) : (
-    <div className="p-4 bg-yellow-50 border border-yellow-200 rounded">
-        <p className="text-sm text-yellow-700">
-            Aún no hay predicciones en el objeto (ia_predictions es: {JSON.stringify(rfqData?.ia_predictions)})
-        </p>
-    </div>
-)}
-                                        {/* Metadata fields */}
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                            {Object.entries(editData.metadata || {}).map(([k, v]) => (
-                                                <div key={k} className="p-2 border border-border-default">
-                                                    <label className="text-xs block mb-1 capitalize" style={{ color: 'var(--text-tertiary)' }}>
-                                                        {k.replace(/_/g, ' ')}
-                                                    </label>
-                                                    <input
-                                                        type={k === 'response_deadline' ? 'date' : 'text'}
-                                                        value={v ?? ''}
-                                                        onChange={(e) => updateMetadata(k, e.target.value)}
-                                                        className="w-full px-2 py-1.5 text-sm border border-border-default focus:outline-none focus:ring-1 focus:ring-brand-accent bg-surface"
-                                                        style={{ color: 'var(--text-primary)' }}
-                                                    />
-                                                </div>
-                                            ))}
-                                        </div>
-
-                                        {/* Supplier picker */}
-                                        <div className="border border-border-default p-3">
-                                            <h4 className="text-xs font-semibold uppercase tracking-wider mb-2 flex items-center justify-between" style={{ color: 'var(--text-tertiary)' }}>
-                                                Assign Suppliers
-                                                <span className="normal-case font-normal" style={{ color: (editData.supplierIds ?? []).length === 0 ? 'var(--brand-danger)' : 'var(--status-active)' }}>
-                                                    {(editData.supplierIds ?? []).length === 0 ? 'At least one supplier required' : `${(editData.supplierIds ?? []).length} selected`}
-                                                </span>
-                                            </h4>
-
-                                            {/* Selected suppliers */}
-                                            {(editData.supplierIds ?? []).length > 0 && (
-                                                <div className="flex flex-wrap gap-1.5 mb-3">
-                                                    {(editData.supplierIds ?? []).map(id => {
-                                                        const s = availableSuppliers.find(x => x.id === id);
-                                                        return (
-                                                            <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs border" style={{ color: 'var(--status-active)', borderColor: 'var(--status-active)', backgroundColor: 'rgba(16,185,129,0.08)' }}>
-                                                                {s?.name ?? s?.username ?? `ID ${id}`}
-                                                                <button onClick={() => removeSupplierFromRFQ(id)} className="ml-1 hover:text-brand-danger" title="Remove">×</button>
-                                                            </span>
-                                                        );
-                                                    })}
-                                                </div>
-                                            )}
-
-                                            {/* Search & add */}
-                                            <input
-                                                type="text"
-                                                value={supplierSearch}
-                                                onChange={e => setSupplierSearch(e.target.value)}
-                                                placeholder={suppliersLoading ? 'Loading suppliers…' : 'Search suppliers to add…'}
-                                                disabled={suppliersLoading}
-                                                className="w-full px-3 py-1.5 text-sm border border-border-default focus:outline-none focus:ring-1 focus:ring-brand-accent bg-surface mb-2"
-                                                style={{ color: 'var(--text-primary)' }}
-                                            />
-                                            <div className="max-h-32 overflow-y-auto border border-border-light">
-                                                {availableSuppliers
-                                                    .filter(s => !(editData.supplierIds ?? []).includes(s.id))
-                                                    .filter(s => {
-                                                        const q = supplierSearch.toLowerCase();
-                                                        return !q || (s.name ?? '').toLowerCase().includes(q) || (s.username ?? '').toLowerCase().includes(q) || (s.email ?? '').toLowerCase().includes(q);
-                                                    })
-                                                    .map(s => (
-                                                        <button
-                                                            key={s.id}
-                                                            onClick={() => addSupplierToRFQ(s.id)}
-                                                            className="w-full text-left px-3 py-2 text-sm hover:bg-surface-hover flex items-center justify-between border-b border-border-light last:border-0"
-                                                            style={{ color: 'var(--text-primary)' }}
-                                                        >
-                                                            <span>{s.name || s.username}</span>
-                                                            <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{s.email}</span>
-                                                        </button>
-                                                    ))}
-                                                {!suppliersLoading && availableSuppliers.filter(s => !(editData.supplierIds ?? []).includes(s.id)).length === 0 && (
-                                                    <p className="px-3 py-2 text-xs" style={{ color: 'var(--text-tertiary)' }}>No more suppliers to add.</p>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                        {Object.entries(rfqData.stage2.data.metadata ?? {}).map(([k, v]) => (
-                                            <div key={k} className="p-2 border border-border-default">
-                                                <label className="text-xs block" style={{ color: 'var(--text-tertiary)' }}>{k.replace(/([A-Z])/g, ' $1').trim()}</label>
-                                                <p className="text-sm">{v || '—'}</p>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-
-                            {editingSection === 'stage2' && (() => {
-                                const hasSupplier = (editData.supplierIds ?? []).length > 0;
-                                return (
-                                    <div className="flex justify-end gap-2 mt-4 pt-3 border-t flex-wrap">
-                                        <Button variant="outline" size="sm" onClick={cancelEditing} disabled={isSaving}>Cancel</Button>
-                                        <Button variant="outline" size="sm" onClick={savePurchaseDraft} disabled={isSaving}>
-                                            {isSaving ? 'Saving...' : 'Save as Draft'}
-                                        </Button>
-                                        <Button
-                                            variant="primary"
-                                            size="sm"
-                                            onClick={submitForApproval}
-                                            disabled={isSaving || !hasSupplier}
-                                            title={!hasSupplier ? 'Assign at least one supplier first' : ''}
-                                        >
-                                            {isSaving ? 'Submitting...' : 'Submit for Approval'}
-                                        </Button>
-                                    </div>
-                                );
-                            })()}
-                        </Card>
-                    )}
-
-                    {/* Stage 3: Supplier Responses */}
-                    {hasStage3 && canSeeSection('stage3') && (
-                        <Card title="3. Supplier Responses">
-                            {/* Statistics bar — visible to all */}
-                            <div className="flex gap-4 mb-4 pb-2 border-b flex-wrap">
-                                <div className="flex items-center gap-2">
-                                    <Users size={14} />
-                                    <span className="text-sm">
-                                        Received: {rfqData.stage3.data.statistics?.responsesReceived ?? 0} / {rfqData.stage3.data.statistics?.totalInvited ?? 0}
-                                    </span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <Truck size={14} />
-                                    <span className="text-sm">
-                                        Final Quotes: {rfqData.stage3.data.responses.filter(r => r.status === 'Final Quote').length}
-                                    </span>
-                                </div>
-                            </div>
-
-                            {/* Supplier role: show the full cost-breakdown quote form */}
-                            {userRole === 'suppliers' && shouldShowCreateResponse() && (
-                                <QuoteForm
-                                    rfqId={rfqData.id}
-                                    rfqType={rfqData.type}
-                                    existingResponses={rfqData.stage3.data.responses}
-                                    onSubmitSuccess={() => navigate('/Suppliers/All-RFQ')}
-                                />
-                            )}
-
-                            {/* Purchases / Ind role: read-only comparison cards */}
-                            {userRole !== 'suppliers' && (
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                                    {rfqData.stage3.data.responses.map((response) => (
-                                        <div key={response.supplier} className={`border-2 p-4 ${selectedResponse?.supplier === response.supplier ? 'border-brand-accent' : 'border-border-default'}`}>
-                                            <div className="flex justify-between items-start mb-3">
-                                                <h4 className="font-semibold">{response.supplier}</h4>
-                                                <div className="flex gap-2">
-                                                    <span className="px-2 py-0.5 text-xs border" style={getStatusBadgeStyle(response.status)}>{response.status}</span>
-                                                    {canEditSection('stage3') && (
-                                                        <button onClick={() => deleteResponse(response.id)} className="text-red-500"><Trash2 size={14} /></button>
-                                                    )}
-                                                </div>
-                                            </div>
-                                            <div className="space-y-1 text-sm mb-3">
-                                                {response.amount != null && (
-                                                    <div className="flex justify-between pt-1"><span>Amount:</span><strong>{response.amount}</strong></div>
-                                                )}
-                                                {response.deliveryTime && (
-                                                    <div className="flex justify-between"><span>Delivery:</span>{response.deliveryTime}</div>
-                                                )}
-                                            </div>
-                                            <button onClick={() => setSelectedResponse(selectedResponse?.supplier === response.supplier ? null : response)} className="w-full py-2 text-sm" style={{ backgroundColor: 'var(--surface-hover)' }}>
-                                                {selectedResponse?.supplier === response.supplier ? 'Hide Details' : 'View Details'}
-                                            </button>
-
-                                            {selectedResponse?.supplier === response.supplier && (
-                                                <div className="mt-4 pt-4 border-t">
-                                                    <h5 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                                                        <DollarSign size={16} style={{ color: 'var(--brand-accent)' }} /> 
-                                                        Quote Summary
-                                                    </h5>
-                                                    <div className="bg-surface rounded-md border p-3">
-                                                        <div className="grid grid-cols-2 gap-y-3 gap-x-4 text-sm">
-                                                            {rfqData.type === 'mold' ? (
-                                                                <>
-                                                                    <div><span className="text-xs text-text-tertiary block">Material Cost</span><span className="font-medium">${Number((response.info1 || {}).MatCst_M1_PrBd || 0).toLocaleString()}</span></div>
-                                                                    <div><span className="text-xs text-text-tertiary block">Manufacturing Cost</span><span className="font-medium">${Number((response.info1 || {}).ManCst_M1_PrBd || 0).toLocaleString()}</span></div>
-                                                                    <div><span className="text-xs text-text-tertiary block">Logistics Cost</span><span className="font-medium">${Number((response.info1 || {}).LogCst_M1_PrBd || 0).toLocaleString()}</span></div>
-                                                                    <div className="col-span-2 pt-2 mt-1 border-t"><span className="text-xs text-text-tertiary block">GRAND TOTAL</span><span className="text-lg font-bold" style={{ color: 'var(--brand-accent)' }}>${Number((response.info1 || {}).GrTot_M1_PrBd || 0).toLocaleString()}</span></div>
-                                                                </>
-                                                            ) : (
-                                                                <>
-                                                                    <div><span className="text-xs text-text-tertiary block">Material Cost</span><span className="font-medium">${Number((response.info1 || {}).MatCst_TD1_PrBd || 0).toLocaleString()}</span></div>
-                                                                    <div><span className="text-xs text-text-tertiary block">Manufacturing Cost</span><span className="font-medium">${Number((response.info1 || {}).ManuCst_TD1_PrBd || 0).toLocaleString()}</span></div>
-                                                                    <div><span className="text-xs text-text-tertiary block">Logistics Cost</span><span className="font-medium">${Number((response.info1 || {}).Logis_TD1_PrBd || 0).toLocaleString()}</span></div>
-                                                                    <div className="col-span-2 pt-2 mt-1 border-t"><span className="text-xs text-text-tertiary block">GRAND TOTAL</span><span className="text-lg font-bold" style={{ color: 'var(--brand-accent)' }}>${Number((response.info1 || {}).GrTotal_TD1_PrBd || 0).toLocaleString()}</span></div>
-                                                                </>
-                                                            )}
+                                <div>
+                                    <SubLabel icon={FileText} text="Attached Documents" accent="#38bdf8" />
+                                    {(rfqData.stage1.data.documents ?? []).length === 0
+                                        ? <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>No documents attached.</p>
+                                        : (
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                                {rfqData.stage1.data.documents.map(doc => (
+                                                    <div key={doc.id} className="border p-3 hover:bg-surface-hover transition-colors"
+                                                        style={{ borderColor: 'var(--border-light)' }}>
+                                                        <div className="flex items-center gap-2 mb-2">
+                                                            {doc.is3D ? <Package size={14} style={{ color: 'var(--brand-accent)' }} /> : <FileText size={14} style={{ color: 'var(--text-tertiary)' }} />}
+                                                            <span className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>{doc.name}</span>
                                                         </div>
+                                                        <p className="text-[10px] mb-2" style={{ color: 'var(--text-tertiary)' }}>{doc.date} · {doc.uploadedBy}</p>
+                                                        <button className="text-xs flex items-center gap-1" style={{ color: 'var(--brand-accent)' }}
+                                                            onClick={() => downloadDocument(rfqData.id, doc.id, doc.name).catch(e => alert(e.message))}>
+                                                            <Download size={11} /> Download
+                                                        </button>
                                                     </div>
-                                                    
-{userRole === 'purchases' && rfqData.status === STATUS.WAITING_FOR_SUPPLIERS && (
-    <div className="flex gap-2 mt-4">
-        <Button size="sm" disabled={actionLoading}
-            onClick={() => {
-                const supplierId = rfqData.stage2?.data?.suppliers?.find(
-                    s => s.name === response.supplier || s.username === response.supplier
-                )?.id;
-                if (!supplierId) { setActionError('Cannot identify supplier ID.'); return; }
-                runAction(selectWinner, rfqData.id, supplierId);
-            }}>
-            <CheckCircle size={16} className="mr-2" />
-            Propose this Supplier (Wait for Admin)
-        </Button>
-    </div>
-)}
-                                                </div>
-                                            )}
-                                        </div>
-                                    ))}
+                                                ))}
+                                            </div>
+                                        )
+                                    }
                                 </div>
-                            )}
-                        </Card>
-                    )}
-
-                    {/* ── State Transition Action Bar ────────────────────────────── */}
-                    {actionError && (
-                        <div className="px-4 py-3 border text-sm" style={{ color: 'var(--brand-danger)', borderColor: 'var(--brand-danger)', backgroundColor: 'rgba(239,68,68,0.1)' }}>
-                            {actionError}
+                            </div>
                         </div>
                     )}
 
-                    <ActionBar
-                        rfqData={rfqData}
-                        userRole={userRole}
-                        isAdmin={isAdmin}
-                        loading={actionLoading}
-                        onAction={runAction}
-                    />
+                    {/* ─── Stage 2: Purchases ─────────────────────────────── */}
+                    {rfqData.stage2 && userRole !== 'suppliers' && (
+                        <div className="border" style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border-default)' }}>
+                            <StageHeader
+                                icon={ShoppingCart} label="Purchases" accent="#4ade80"
+                                approved={false}
+                                canEdit={canEditStage2}
+                                onEdit={openPurchasesModal}
+                            />
+                            <div className="p-5 space-y-5">
+                                {rfqData?.ia_predictions?.predictions && (
+                                    <IARecommendations data={rfqData.ia_predictions.predictions} />
+                                )}
+
+                                {(rfqData.response_deadline || rfqData.shipping_terms || rfqData.quality_requirements) && (
+                                    <div>
+                                        <SubLabel icon={Info} text="RFQ Details" accent="#4ade80" />
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                            {[
+                                                { label: 'Response Deadline',    value: rfqData.response_deadline },
+                                                { label: 'Shipping Terms',       value: rfqData.shipping_terms },
+                                                { label: 'Quality Requirements', value: rfqData.quality_requirements },
+                                            ].filter(x => x.value).map(({ label, value }) => (
+                                                <div key={label} className="p-3 border"
+                                                    style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--background-secondary)' }}>
+                                                    <span className="text-[10px] font-semibold uppercase tracking-wider block mb-1" style={{ color: 'var(--text-tertiary)' }}>{label}</span>
+                                                    <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{value}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div>
+                                    <SubLabel icon={Building2} text="Assigned Suppliers" accent="#4ade80" />
+                                    {(rfqData.stage2.data.suppliers ?? []).length === 0
+                                        ? <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>No suppliers assigned yet.</p>
+                                        : (
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                                {rfqData.stage2.data.suppliers.map((s, i) => (
+                                                    <div key={s.id ?? i} className="border p-3"
+                                                        style={{ borderColor: 'var(--border-light)', backgroundColor: 'var(--background-secondary)' }}>
+                                                        <div className="flex items-center gap-2 mb-2">
+                                                            <div className="w-8 h-8 flex items-center justify-center text-xs font-bold flex-shrink-0"
+                                                                style={{ background: 'linear-gradient(135deg, var(--brand-primary), var(--brand-accent))', color: '#fff' }}>
+                                                                {(s.name ?? '?').charAt(0).toUpperCase()}
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{s.name}</p>
+                                                                <p className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{s.email || 'No email'}</p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="px-2 py-0.5 text-xs border" style={getStatusStyle(s.status)}>{s.status}</span>
+                                                            {s.has_responded && (
+                                                                <span className="text-xs flex items-center gap-1" style={{ color: 'var(--status-active)' }}>
+                                                                    <CheckCircle size={11} /> Responded
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ─── Stage 3: Supplier Responses / Quote Form ───────── */}
+                    {(rfqData.stage3 || shouldShowQuoteForm()) && userRole !== 'purchases' && (
+                        <div className="border" style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border-default)' }}>
+                            <div className="flex items-center gap-2 px-5 py-3 border-b"
+                                style={{ backgroundColor: 'var(--background-secondary)', borderColor: 'var(--border-light)' }}>
+                                <div className="w-1 h-4 flex-shrink-0" style={{ backgroundColor: '#fb923c' }} />
+                                <Users size={14} style={{ color: '#fb923c' }} />
+                                <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
+                                    {shouldShowQuoteForm() ? 'Submit Your Quote' : 'Supplier Responses'}
+                                </span>
+                                {rfqData.stage3?.data?.statistics && !shouldShowQuoteForm() && (
+                                    <span className="text-[10px] px-1.5 py-0.5 border ml-2"
+                                        style={{ color: 'var(--text-tertiary)', borderColor: 'var(--border-default)' }}>
+                                        {rfqData.stage3.data.statistics.responsesReceived ?? 0} / {rfqData.stage3.data.statistics.totalInvited ?? 0} replied
+                                    </span>
+                                )}
+                            </div>
+
+                            <div className="p-5">
+                                {shouldShowQuoteForm() ? (
+                                    <QuoteForm
+                                        rfqId={rfqData.id}
+                                        rfqType={rfqData.type}
+                                        existingResponses={rfqData.stage3?.data?.responses ?? []}
+                                        onSubmitSuccess={() => navigate('/Suppliers/All-RFQ')}
+                                    />
+                                ) : rfqData.stage3 && (
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                        {(rfqData.stage3.data.responses ?? []).map(response => {
+                                            const expanded = expandedSupplier === response.supplier;
+                                            return (
+                                                <div key={response.supplier} className="border"
+                                                    style={{ borderColor: expanded ? 'var(--brand-accent)' : 'var(--border-default)' }}>
+                                                    <div className="flex justify-between items-start p-4">
+                                                        <div className="flex items-center gap-2.5">
+                                                            <div className="w-9 h-9 flex items-center justify-center text-sm font-bold"
+                                                                style={{ background: 'linear-gradient(135deg, var(--brand-primary), var(--brand-accent))', color: '#fff' }}>
+                                                                {(response.supplier ?? '?').charAt(0).toUpperCase()}
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{response.supplier}</p>
+                                                                <span className="px-2 py-0.5 text-xs border" style={getStatusStyle(response.status)}>{response.status}</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => setExpandedSupplier(expanded ? null : response.supplier)}
+                                                        className="w-full py-2 text-sm border-t flex items-center justify-center gap-1.5"
+                                                        style={{ color: 'var(--text-secondary)', borderColor: 'var(--border-light)', backgroundColor: 'var(--surface-hover)' }}>
+                                                        {expanded ? <><ChevronUp size={13} /> Hide</> : <><ChevronDown size={13} /> View Cost Summary</>}
+                                                    </button>
+                                                    {expanded && (
+                                                        <div className="p-4 border-t" style={{ borderColor: 'var(--border-light)' }}>
+                                                            <div className="grid grid-cols-2 gap-2">
+                                                                {rfqData.type === 'mold' ? (
+                                                                    <>
+                                                                        <StatBlock label="Material"      value={`$${Number((response.info1 ?? {}).MatCst_M1_PrBd ?? 0).toLocaleString()}`} />
+                                                                        <StatBlock label="Manufacturing" value={`$${Number((response.info1 ?? {}).ManCst_M1_PrBd ?? 0).toLocaleString()}`} />
+                                                                        <StatBlock label="Logistics"     value={`$${Number((response.info1 ?? {}).LogCst_M1_PrBd ?? 0).toLocaleString()}`} />
+                                                                        <StatBlock label="Grand Total"   value={`$${Number((response.info1 ?? {}).GrTot_M1_PrBd ?? 0).toLocaleString()}`} />
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        <StatBlock label="Material"      value={`$${Number((response.info1 ?? {}).MatCst_TD1_PrBd ?? 0).toLocaleString()}`} />
+                                                                        <StatBlock label="Manufacturing" value={`$${Number((response.info1 ?? {}).ManuCst_TD1_PrBd ?? 0).toLocaleString()}`} />
+                                                                        <StatBlock label="Logistics"     value={`$${Number((response.info1 ?? {}).Logis_TD1_PrBd ?? 0).toLocaleString()}`} />
+                                                                        <StatBlock label="Grand Total"   value={`$${Number((response.info1 ?? {}).GrTotal_TD1_PrBd ?? 0).toLocaleString()}`} />
+                                                                    </>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                        {(rfqData.stage3.data.responses ?? []).length === 0 && (
+                                            <p className="col-span-2 text-sm py-4" style={{ color: 'var(--text-tertiary)' }}>No supplier responses yet.</p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ─── Action errors + Action bar ─────────────────────── */}
+                    {actionError && (
+                        <div className="flex items-center gap-2 px-4 py-3 border text-sm"
+                            style={{ color: 'var(--brand-danger)', borderColor: 'var(--brand-danger)', backgroundColor: 'rgba(239,68,68,0.08)' }}>
+                            <AlertCircle size={15} /> {actionError}
+                        </div>
+                    )}
+                    <ActionBar rfqData={rfqData} userRole={userRole} isAdmin={isAdmin} loading={actionLoading} onAction={runAction} />
                 </div>
             </div>
+
+            {/* ─── Specs Edit Modal ───────────────────────────────────── */}
+            {rfqData && (
+                <Modal open={modal === 'specs'} onClose={closeModal}
+                    title={`Edit Specifications — ${rfqData.type === 'mold' ? 'Mold' : 'Trim Die'}`}
+                    size="xl">
+                    <SpecsEditContent
+                        rfqType={rfqData.type}
+                        specs={editData.specs ?? {}}
+                        onChange={(key, val) => setEditData(prev => ({ ...prev, specs: { ...prev.specs, [key]: val } }))}
+                    />
+                    <div className="flex justify-end gap-2 mt-6 pt-4 border-t" style={{ borderColor: 'var(--border-default)' }}>
+                        <Button variant="outline" onClick={closeModal} disabled={isSaving}>Cancel</Button>
+                        <Button variant="outline" onClick={saveSpecs} disabled={isSaving}>
+                            {isSaving ? 'Saving…' : 'Save Changes'}
+                        </Button>
+                        {rfqData.status === STATUS.IND_DRAFT && userRole === 'industrialization' && stage1RequiredFilled() && (
+                            <Button variant="primary" onClick={saveAndSubmitSpecs} disabled={isSaving}>
+                                {isSaving ? 'Submitting…' : 'Save & Submit for Approval'}
+                            </Button>
+                        )}
+                    </div>
+                </Modal>
+            )}
+
+            {/* ─── Purchases Edit Modal ───────────────────────────────── */}
+            {rfqData && (
+                <Modal open={modal === 'purchases'} onClose={closeModal} title="Edit Purchases Details" size="lg">
+                    <PurchasesEditContent
+                        meta={editData.meta ?? {}}
+                        onMetaChange={(k, v) => setEditData(prev => ({ ...prev, meta: { ...prev.meta, [k]: v } }))}
+                        supplierIds={editData.supplierIds ?? []}
+                        onAddSupplier={sid => setEditData(prev => ({ ...prev, supplierIds: [...(prev.supplierIds ?? []), sid] }))}
+                        onRemoveSupplier={sid => setEditData(prev => ({ ...prev, supplierIds: (prev.supplierIds ?? []).filter(x => x !== sid) }))}
+                        availableSuppliers={availableSuppliers}
+                        suppliersLoading={suppliersLoading}
+                        supplierSearch={supplierSearch}
+                        onSearchChange={setSupplierSearch}
+                    />
+                    <div className="flex justify-end gap-2 mt-6 pt-4 border-t" style={{ borderColor: 'var(--border-default)' }}>
+                        <Button variant="outline" onClick={closeModal} disabled={isSaving}>Cancel</Button>
+                        <Button variant="outline" onClick={() => savePurchases(true)} disabled={isSaving}>
+                            {isSaving ? 'Saving…' : 'Save as Draft'}
+                        </Button>
+                        {purchasesAllFilled() && (
+                            <Button variant="primary" onClick={() => savePurchases(false)} disabled={isSaving}>
+                                {isSaving ? 'Submitting…' : 'Submit for Approval'}
+                            </Button>
+                        )}
+                    </div>
+                </Modal>
+            )}
         </div>
     );
 }
 
-// ── Action Bar ─────────────────────────────────────────────────────────────────
+// ── ActionBar ──────────────────────────────────────────────────────────────────
+
 function ActionBar({ rfqData, userRole, isAdmin, loading, onAction }) {
     if (!rfqData) return null;
     const { status, submitted_for_review, type, title, id } = rfqData;
-
-    const btn = (label, fn, variant = 'primary') => (
-        <Button key={label} variant={variant} disabled={loading} onClick={() => onAction(fn)}>
-            {loading ? 'Working…' : label}
-        </Button>
-    );
-
     const actions = [];
 
-    // ── Industrialization ──────────────────────────────────────────────────────
     if (userRole === 'industrialization') {
-        if (status === STATUS.IND_DRAFT && !submitted_for_review && !isAdmin) {
-            actions.push(btn('Submit for Approval', () => submitRFQForReview(id, type, title ?? '')));
-        }
-        if (status === STATUS.IND_DRAFT && submitted_for_review && !isAdmin) {
+        if (status === STATUS.IND_DRAFT && !submitted_for_review && !isAdmin)
             actions.push(
-                <span key="pending" className="text-sm" style={{ color: 'var(--text-tertiary)' }}>
-                    Waiting for Ind. Admin review
+                <Button key="submit" disabled={loading}
+                    onClick={() => onAction(() => submitRFQForReview(id, type, title ?? ''))}>
+                    {loading ? 'Working…' : 'Submit for Approval'}
+                </Button>
+            );
+        if (status === STATUS.IND_DRAFT && submitted_for_review && !isAdmin)
+            actions.push(
+                <span key="wait" className="text-sm flex items-center gap-1.5" style={{ color: 'var(--text-tertiary)' }}>
+                    <Clock size={14} /> Waiting for Ind. Admin review
                 </span>
             );
-        }
-        // Ind_Admin: approve or reject
         if (status === STATUS.IND_DRAFT && submitted_for_review && isAdmin) {
-            actions.push(btn('Approve - Send to Purchases', () => approveRFQInd(id, true)));
-            actions.push(btn('Reject (return to engineer)', () => approveRFQInd(id, false), 'outline'));
+            actions.push(
+                <Button key="approve" disabled={loading}
+                    onClick={() => onAction(() => approveRFQInd(id, true))}>
+                    {loading ? 'Working…' : 'Approve — Send to Purchases'}
+                </Button>,
+                <Button key="reject" variant="outline" disabled={loading}
+                    onClick={() => onAction(() => approveRFQInd(id, false))}>
+                    Reject
+                </Button>
+            );
         }
     }
 
-    // ── Purchases ─────────────────────────────────────────────────────────────
-   // ── Purchases ─────────────────────────────────────────────────────────────
     if (userRole === 'purchases') {
-        // Purchases_Admin: approve or reject supplier list
         if (isAdmin && status === STATUS.PURCHASES_DRAFT && submitted_for_review) {
-            actions.push(btn('Approve Supplier List - Publish', () => approveSupplierList(id, 'aprobar')));
-            actions.push(btn('Reject (return to Purchases)', () => approveSupplierList(id, 'rechazar'), 'outline'));
-        }
-        if (!isAdmin && status === STATUS.PURCHASES_DRAFT && submitted_for_review) {
             actions.push(
-                <span key="pending" className="text-sm" style={{ color: 'var(--text-tertiary)' }}>
-                    Waiting for Purchases Admin approval
-                </span>
+                <Button key="approve" disabled={loading}
+                    onClick={() => onAction(() => approveSupplierList(id, 'aprobar'))}>
+                    {loading ? 'Working…' : 'Approve — Publish to Suppliers'}
+                </Button>,
+                <Button key="reject" variant="outline" disabled={loading}
+                    onClick={() => onAction(() => approveSupplierList(id, 'rechazar'))}>
+                    Reject
+                </Button>
             );
         }
-
-        // --- NUEVO: Indicador para el usuario normal cuando ya propuso al ganador ---
-        if (!isAdmin && status === STATUS.SUPPLIER_SELECTED) {
+        if (!isAdmin && status === STATUS.PURCHASES_DRAFT && submitted_for_review)
             actions.push(
-                <span key="pending-award" className="text-sm" style={{ color: 'var(--text-tertiary)' }}>
-                    Waiting for Purchases Admin final award approval
+                <span key="wait" className="text-sm flex items-center gap-1.5" style={{ color: 'var(--text-tertiary)' }}>
+                    <Clock size={14} /> Waiting for Purchases Admin approval
                 </span>
             );
-        }
-
-        // Purchases_Admin: final manager decision
         if (isAdmin && status === STATUS.SUPPLIER_SELECTED) {
-            actions.push(btn('Final Award — Close RFQ', () => finalManagerDecision(id, 'aprobar')));
-            actions.push(btn('Reject — Re-evaluate Suppliers', () => finalManagerDecision(id, 'rechazar'), 'outline'));
+            actions.push(
+                <Button key="award" disabled={loading}
+                    onClick={() => onAction(() => finalManagerDecision(id, 'aprobar'))}>
+                    {loading ? 'Working…' : 'Final Award — Close RFQ'}
+                </Button>,
+                <Button key="reevaluate" variant="outline" disabled={loading}
+                    onClick={() => onAction(() => finalManagerDecision(id, 'rechazar'))}>
+                    Re-evaluate
+                </Button>
+            );
         }
+        if (!isAdmin && status === STATUS.SUPPLIER_SELECTED)
+            actions.push(
+                <span key="wait-award" className="text-sm flex items-center gap-1.5" style={{ color: 'var(--text-tertiary)' }}>
+                    <Clock size={14} /> Waiting for Purchases Admin final award
+                </span>
+            );
     }
-
-    // ── Suppliers ─────────────────────────────────────────────────────────────
-    // (Quote creation handled via stage3 edit + save)
 
     if (actions.length === 0) return null;
-
     return (
-        <div className="mt-6 pt-4 border-t border-border-default">
-            <div className="flex flex-wrap gap-3 justify-end">
-                {actions}
-            </div>
+        <div className="pt-4 border-t" style={{ borderColor: 'var(--border-default)' }}>
+            <div className="flex flex-wrap gap-3 justify-end">{actions}</div>
         </div>
     );
 }

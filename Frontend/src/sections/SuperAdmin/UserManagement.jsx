@@ -2,15 +2,14 @@
 // SuperAdmin-only panel: list, create, edit, and soft-delete internal users.
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
     Users, Plus, Pencil, Search, X, RefreshCw, Shield, ShieldOff,
-    Mail, User, Building2, ChevronDown, AlertCircle, CheckCircle2,
-    Eye, EyeOff, ChevronsUpDown, ArrowUp, ArrowDown, Key,
+    Mail, Building2, AlertCircle, CheckCircle2,
+    ChevronsUpDown, ArrowUp, ArrowDown,
 } from 'lucide-react';
 import {
     getUsers,
-    createUser,
-    updateUser,
     deactivateUser,
     INTERNAL_ROLES,
 } from '../api';
@@ -183,290 +182,11 @@ function ConfirmDialog({ confirm, onCancel, onConfirm, loading }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// User Form Page (Create / Edit)
-// ─────────────────────────────────────────────────────────────────────────────
-
-const EMPTY_FORM = {
-    username: '',
-    first_name: '',
-    last_name: '',
-    email: '',
-    rol: '',
-    password: '',
-    confirmPassword: '',
-};
-
-function UserFormPage({ mode, user, onClose, onSave }) {
-    const isEdit = mode === 'edit';
-    const [form, setForm] = useState(
-        isEdit
-            ? {
-                username:        user.username,
-                first_name:      user.firstName ?? '',
-                last_name:       user.lastName  ?? '',
-                email:           user.email     ?? '',
-                rol:             user.role       ?? '',
-                password:        '',
-                confirmPassword: '',
-            }
-            : { ...EMPTY_FORM }
-    );
-    const [showPwd, setShowPwd]         = useState(false);
-    const [submitting, setSubmitting]   = useState(false);
-    const [fieldErrors, setFieldErrors] = useState({});
-
-    const set = (key, val) => {
-        setForm(prev => ({ ...prev, [key]: val }));
-        setFieldErrors(prev => ({ ...prev, [key]: undefined }));
-    };
-
-    const validate = () => {
-        const errs = {};
-        if (!isEdit && !form.username.trim()) errs.username = 'Required';
-        if (!form.email.trim())               errs.email    = 'Required';
-        if (!form.rol)                        errs.rol      = 'Select a role';
-        if (!isEdit && !form.password)        errs.password = 'Required for new users';
-        if (form.password && form.password !== form.confirmPassword)
-            errs.confirmPassword = 'Passwords do not match';
-        return errs;
-    };
-
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        const errs = validate();
-        if (Object.keys(errs).length) { setFieldErrors(errs); return; }
-
-        setSubmitting(true);
-        try {
-            const payload = {
-                first_name: form.first_name,
-                last_name:  form.last_name,
-                email:      form.email,
-                rol:        form.rol,
-            };
-            if (!isEdit) {
-                payload.username = form.username;
-                payload.password = form.password;
-            } else if (form.password) {
-                payload.password = form.password;
-            }
-
-            const saved = isEdit
-                ? await updateUser(user.id, payload)
-                : await createUser(payload);
-
-            onSave(saved, isEdit ? 'updated' : 'created');
-        } catch (err) {
-            setFieldErrors({ _global: err.message });
-        } finally {
-            setSubmitting(false);
-        }
-    };
-
-    const Field = ({ label, name, type = 'text', required, children }) => (
-        <div>
-            <label
-                className="block text-[10px] font-semibold uppercase tracking-wider mb-2"
-                style={{ color: 'var(--text-tertiary)' }}
-            >
-                {label}{required && <span style={{ color: 'var(--brand-danger)' }}> *</span>}
-            </label>
-            {children ?? (
-                <input
-                    id={`um-field-${name}`}
-                    type={type}
-                    value={form[name]}
-                    onChange={e => set(name, e.target.value)}
-                    autoComplete="off"
-                    className="w-full border px-3 py-2 text-sm text-center outline-none transition-all"
-                    style={{
-                        backgroundColor: 'var(--surface)',
-                        borderColor: fieldErrors[name] ? 'var(--brand-danger)' : 'var(--border-default)',
-                        color: 'var(--text-primary)',
-                    }}
-                    onFocus={e => {
-                        if (!fieldErrors[name]) e.target.style.borderColor = 'var(--ring)';
-                    }}
-                    onBlur={e => {
-                        if (!fieldErrors[name]) e.target.style.borderColor = 'var(--border-default)';
-                    }}
-                />
-            )}
-            {fieldErrors[name] && (
-                <p className="text-xs mt-1" style={{ color: 'var(--brand-danger)' }}>
-                    {fieldErrors[name]}
-                </p>
-            )}
-        </div>
-    );
-
-    return (
-        <div className="py-8 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <button
-                type="button"
-                onClick={onClose}
-                className="mb-6 flex items-center gap-2 text-sm font-medium transition-colors"
-                style={{ color: 'var(--text-secondary)' }}
-                onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'}
-                onMouseLeave={e => e.currentTarget.style.color = 'var(--text-secondary)'}
-            >
-                <X size={16} /> Back to Users
-            </button>
-            <div
-                className="w-full border shadow-sm rounded-md"
-                style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border-default)' }}
-            >
-                {/* Page header */}
-                <div
-                    className="flex items-center px-8 py-6 border-b"
-                    style={{ borderColor: 'var(--border-default)' }}
-                >
-                    <div className="flex items-center gap-4">
-                        <div
-                            className="w-12 h-12 flex items-center justify-center rounded-lg"
-                            style={{ backgroundColor: 'rgba(59,130,246,0.1)' }}
-                        >
-                            {isEdit ? <Pencil size={24} style={{ color: '#0f2742' }} /> : <Plus size={24} style={{ color: '#0f2742' }} />}
-                        </div>
-                        <div>
-                            <h2 className="text-xl font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>
-                                {isEdit ? 'Edit User' : 'Create New User'}
-                            </h2>
-                            <p className="text-sm mt-1" style={{ color: 'var(--text-tertiary)' }}>
-                                {isEdit ? `Editing user profile: ${user.name}` : 'Add a new internal user to the system'}
-                            </p>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Form */}
-                <form onSubmit={handleSubmit} className="px-8 py-6 space-y-8" noValidate>
-                    {fieldErrors._global && (
-                        <div
-                            className="flex items-center gap-2 px-3 py-2 border text-xs mb-4"
-                            style={{ borderColor: 'var(--brand-danger)', backgroundColor: 'rgba(239,68,68,0.08)', color: 'var(--brand-danger)' }}
-                        >
-                            <AlertCircle size={14} />
-                            {fieldErrors._global}
-                        </div>
-                    )}
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* Username — only on create */}
-                        {!isEdit && (
-                            <Field label="Username" name="username" required />
-                        )}
-
-                        <Field label="First Name" name="first_name" />
-                        <Field label="Last Name"  name="last_name"  />
-
-                        {/* Email */}
-                        <Field label="Email Address" name="email" type="email" required />
-
-                        {/* Role / Area */}
-                        <Field label="Role / Area" name="rol" required>
-                            <select
-                                id="um-field-rol"
-                                value={form.rol}
-                                onChange={e => set('rol', e.target.value)}
-                                className="w-full border px-3 py-2 text-sm text-center outline-none transition-all cursor-pointer"
-                                style={{
-                                    backgroundColor: 'var(--surface)',
-                                    borderColor: fieldErrors.rol ? 'var(--brand-danger)' : 'var(--border-default)',
-                                    color: 'var(--text-primary)',
-                                }}
-                            >
-                                <option value="">Select a role…</option>
-                                {INTERNAL_ROLES.map(r => (
-                                    <option key={r.value} value={r.value}>{r.label}</option>
-                                ))}
-                            </select>
-                            {fieldErrors.rol && (
-                                <p className="text-xs mt-1" style={{ color: 'var(--brand-danger)' }}>{fieldErrors.rol}</p>
-                            )}
-                        </Field>
-                    </div>
-
-                    {/* Password */}
-                    <div className="pt-4 mt-6 border-t" style={{ borderColor: 'var(--border-light)' }}>
-                        <p className="text-[10px] font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text-tertiary)' }}>
-                            {isEdit ? 'Change Password (optional)' : 'Set Password *'}
-                        </p>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <div className="relative">
-                                    <input
-                                        id="um-field-password"
-                                        type={showPwd ? 'text' : 'password'}
-                                        value={form.password}
-                                        onChange={e => set('password', e.target.value)}
-                                        placeholder={isEdit ? 'New password…' : 'Password'}
-                                        autoComplete="new-password"
-                                        className="w-full border px-3 py-2 pr-9 text-sm text-center outline-none transition-all"
-                                        style={{
-                                            backgroundColor: 'var(--surface)',
-                                            borderColor: fieldErrors.password ? 'var(--brand-danger)' : 'var(--border-default)',
-                                            color: 'var(--text-primary)',
-                                        }}
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowPwd(p => !p)}
-                                        className="absolute right-2 top-1/2 -translate-y-1/2"
-                                        style={{ color: 'var(--text-tertiary)' }}
-                                        tabIndex={-1}
-                                    >
-                                        {showPwd ? <EyeOff size={14} /> : <Eye size={14} />}
-                                    </button>
-                                </div>
-                                {fieldErrors.password && (
-                                    <p className="text-xs mt-1" style={{ color: 'var(--brand-danger)' }}>{fieldErrors.password}</p>
-                                )}
-                            </div>
-                            <div>
-                                <input
-                                    id="um-field-confirm-password"
-                                    type={showPwd ? 'text' : 'password'}
-                                    value={form.confirmPassword}
-                                    onChange={e => set('confirmPassword', e.target.value)}
-                                    placeholder="Confirm"
-                                    autoComplete="new-password"
-                                    className="w-full border px-3 py-2 text-sm text-center outline-none transition-all"
-                                    style={{
-                                        backgroundColor: 'var(--surface)',
-                                        borderColor: fieldErrors.confirmPassword ? 'var(--brand-danger)' : 'var(--border-default)',
-                                        color: 'var(--text-primary)',
-                                    }}
-                                />
-                                {fieldErrors.confirmPassword && (
-                                    <p className="text-xs mt-1" style={{ color: 'var(--brand-danger)' }}>{fieldErrors.confirmPassword}</p>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Footer */}
-                    <div className="flex justify-end gap-2 pt-4 mt-6 border-t" style={{ borderColor: 'var(--border-light)' }}>
-                        <Button type="button" variant="outline" size="sm" onClick={onClose} disabled={submitting}>
-                            Cancel
-                        </Button>
-                        <Button type="submit" size="sm" disabled={submitting} id="um-form-submit">
-                            {submitting
-                                ? <><span className="animate-spin w-3 h-3 border border-white border-t-transparent rounded-full" /> Saving…</>
-                                : (isEdit ? 'Save Changes' : 'Create User')}
-                        </Button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function UserManagement() {
+    const navigate = useNavigate();
     const [users,       setUsers]       = useState([]);
     const [loading,     setLoading]     = useState(true);
     const [error,       setError]       = useState(null);
@@ -474,7 +194,6 @@ export default function UserManagement() {
     const [filterRole,  setFilterRole]  = useState('');
     const [filterStatus,setFilterStatus]= useState('');
     const [sortConfig,  setSortConfig]  = useState({ key: 'name', dir: 'asc' });
-    const [modal,       setModal]       = useState(null);   // null | { mode:'create'|'edit', user? }
     const [confirm,     setConfirm]     = useState(null);   // null | { user }
     const [toast,       setToast]       = useState(null);
     const [actionLoading, setActionLoading] = useState(false);
@@ -532,20 +251,6 @@ export default function UserManagement() {
         setToast({ message, type });
     };
 
-    const handleSaveUser = async (savedUser, action) => {
-        setUsers(prev =>
-            action === 'created'
-                ? [...prev, savedUser]
-                : prev.map(u => u.id === savedUser.id ? savedUser : u)
-        );
-        setModal(null);
-        showToast(
-            action === 'created'
-                ? `User "${savedUser.name}" created successfully.`
-                : `User "${savedUser.name}" updated successfully.`
-        );
-    };
-
     const handleToggleStatus = async () => {
         if (!confirm) return;
         setActionLoading(true);
@@ -585,19 +290,6 @@ export default function UserManagement() {
     // Render
     // ─────────────────────────────────────────────────────────────────────────
 
-    if (modal) {
-        return (
-            <div className="min-h-screen" style={{ backgroundColor: 'var(--background-secondary)' }}>
-                <UserFormPage
-                    mode={modal.mode}
-                    user={modal.user}
-                    onClose={() => setModal(null)}
-                    onSave={handleSaveUser}
-                />
-            </div>
-        );
-    }
-
     return (
         <div className="min-h-screen" style={{ backgroundColor: 'var(--background-secondary)' }}>
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -634,7 +326,7 @@ export default function UserManagement() {
                         </Button>
                         <Button
                             size="sm"
-                            onClick={() => setModal({ mode: 'create' })}
+                            onClick={() => navigate('/SuperAdmin/user/new-user')}
                             id="um-create-btn"
                         >
                             <Plus size={14} />
@@ -643,23 +335,18 @@ export default function UserManagement() {
                     </div>
                 </div>
 
-                {/* ── Stats strip ─────────────────────────────────────────────── */}
+                {/* ── Stats inline ─────────────────────────────────────────────── */}
                 {!loading && !error && (
-                    <div className="grid grid-cols-3 gap-4 mb-6">
-                        {[
-                            { label: 'Total Users',    value: stats.total,    color: 'var(--brand-accent)' },
-                            { label: 'Active',         value: stats.active,   color: 'var(--status-active)' },
-                            { label: 'Deactivated',    value: stats.inactive, color: 'var(--text-tertiary)' },
-                        ].map(s => (
-                            <div
-                                key={s.label}
-                                className="flex items-center gap-4 px-5 py-4 border"
-                                style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border-default)' }}
-                            >
-                                <span className="text-2xl font-bold" style={{ color: s.color }}>{s.value}</span>
-                                <span className="text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>{s.label}</span>
-                            </div>
-                        ))}
+                    <div className="flex items-center gap-6 mb-5 pb-4 border-b" style={{ borderColor: 'var(--border-light)' }}>
+                        <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                            Total: <strong style={{ color: 'var(--brand-accent)' }}>{stats.total}</strong>
+                        </span>
+                        <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                            Active: <strong style={{ color: 'var(--status-active)' }}>{stats.active}</strong>
+                        </span>
+                        <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                            Inactive: <strong style={{ color: 'var(--text-tertiary)' }}>{stats.inactive}</strong>
+                        </span>
                     </div>
                 )}
 
@@ -886,7 +573,7 @@ export default function UserManagement() {
                                                         {/* Edit */}
                                                         <button
                                                             id={`um-edit-${user.id}`}
-                                                            onClick={() => setModal({ mode: 'edit', user })}
+                                                            onClick={() => navigate(`/SuperAdmin/user/${user.id}`)}
                                                             className="p-1.5 border transition-all"
                                                             title="Edit user"
                                                             style={{

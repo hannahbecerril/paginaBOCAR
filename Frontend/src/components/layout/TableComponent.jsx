@@ -11,8 +11,18 @@ import {
     Trash2,
     FileText,
     Clock,
-    X
+    X,
+    Building2,
 } from 'lucide-react';
+
+const AREA_COLORS = {
+    SuperAdmin:             { color: '#a78bfa', bg: 'rgba(167,139,250,0.12)', border: 'rgba(167,139,250,0.35)' },
+    Industrialization_Admin:{ color: '#60a5fa', bg: 'rgba(96,165,250,0.12)',  border: 'rgba(96,165,250,0.35)'  },
+    Industrialization:      { color: '#38bdf8', bg: 'rgba(56,189,248,0.12)',  border: 'rgba(56,189,248,0.35)'  },
+    Purchases_Admin:        { color: '#34d399', bg: 'rgba(52,211,153,0.12)',  border: 'rgba(52,211,153,0.35)'  },
+    Purchases:              { color: '#4ade80', bg: 'rgba(74,222,128,0.12)',  border: 'rgba(74,222,128,0.35)'  },
+    Supplier:               { color: '#fb923c', bg: 'rgba(251,146,60,0.12)',  border: 'rgba(251,146,60,0.35)'  },
+};
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import { STATUS_LABEL } from '../../constants/rfqStatus';
@@ -124,15 +134,25 @@ export default function TableComponent({
     // DEFAULT RENDERERS
     const renderCell = (value, type, row) => {
         switch (type) {
-            case 'person_name':
+            case 'person_name': {
+                const initials = value
+                    ? value.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
+                    : '?';
                 return (
                     <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-surface-hover flex items-center justify-center text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                            {value?.charAt(0).toUpperCase()}
+                        <div
+                            className="w-8 h-8 flex items-center justify-center text-xs font-bold flex-shrink-0"
+                            style={{
+                                background: 'linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-accent) 100%)',
+                                color: '#fff',
+                            }}
+                        >
+                            {initials}
                         </div>
                         <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{value}</span>
                     </div>
                 );
+            }
 
             case 'file_name':
                 return (
@@ -172,7 +192,19 @@ export default function TableComponent({
                     </div>
                 );
 
-            case 'badge':
+            case 'badge': {
+                const areaStyle = AREA_COLORS[value];
+                if (areaStyle) {
+                    return (
+                        <span
+                            className="inline-flex items-center gap-1.5 px-2.5 py-0.5 text-xs font-medium border"
+                            style={{ color: areaStyle.color, backgroundColor: areaStyle.bg, borderColor: areaStyle.border }}
+                        >
+                            <Building2 size={11} />
+                            {(value ?? '').replace(/_/g, ' ')}
+                        </span>
+                    );
+                }
                 return (
                     <span className="inline-flex w-20 justify-center px-2.5 py-0.5 text-xs font-medium border" style={{
                         color: 'var(--text-secondary)',
@@ -182,6 +214,7 @@ export default function TableComponent({
                         {value}
                     </span>
                 );
+            }
 
             case 'status':
                 const statusStyles = {

@@ -19,11 +19,19 @@ export default function SuppliersDashboard() {
         : storedUser.username ?? 'Supplier';
 
     const tabs = [
-        { label: 'All RFQs',          path: 'All-RFQ' },
-        { label: 'Not Answered RFQs', path: 'Not-Answered-RFQ' },
-        { label: 'Drafts',            path: 'Drafts' },
-        { label: 'Calendar',          path: 'Calendar' },
-        { label: 'Assistant',         path: 'Chatbot' },
+        { label: 'Calendar',  path: 'Calendar' },
+        { label: 'Assistant', path: 'Chatbot' },
+    ];
+
+    const sections = [
+        {
+            label: 'RFQ Management',
+            items: [
+                { label: 'All RFQs',          path: 'All-RFQ' },
+                { label: 'Not Answered RFQs', path: 'Not-Answered-RFQ' },
+                { label: 'Drafts',            path: 'Drafts' },
+            ],
+        },
     ];
 
     return (
@@ -32,7 +40,9 @@ export default function SuppliersDashboard() {
                 module="Suppliers"
                 basePath="/Suppliers"
                 tabs={tabs}
+                sections={sections}
                 user={{ name: displayName }}
+                sectionsFirst={true}
             />
 
             <div className="p-6">

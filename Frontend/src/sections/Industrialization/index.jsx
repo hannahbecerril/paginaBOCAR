@@ -52,6 +52,7 @@ export default function IndustrializationDashboard() {
                 tabs={tabs}
                 sections={sections}
                 user={{ name: displayName }}
+                sectionsFirst={true}
             />
 
             <div className="p-6">

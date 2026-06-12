@@ -162,8 +162,6 @@ export default function RFQForm() {
     };
 
     const handleNext = () => {
-        const err = validateStep();
-        if (err) { setFeedback({ type: 'error', message: err }); return; }
         setFeedback(null);
         setStep(s => Math.min(s + 1, TOTAL_STEPS));
     };
@@ -260,9 +258,13 @@ export default function RFQForm() {
                         const n = i + 1;
                         const active = step === n;
                         const done = step > n;
+                        const canGoTo = n === 1 || n === 2 || n <= step + 1;
                         return (
                             <div key={n} className="flex items-center flex-1 last:flex-none">
-                                <div className="flex items-center gap-2">
+                                <div
+                                    className={`flex items-center gap-2 ${canGoTo ? 'cursor-pointer' : 'cursor-default opacity-50'}`}
+                                    onClick={() => canGoTo && setStep(n)}
+                                >
                                     <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0
                                         ${done ? 'bg-brand-success text-white' : active ? 'bg-brand-primary text-white' : 'bg-surface-active text-text-tertiary border border-border-default'}`}>
                                         {done ? <Check size={14} strokeWidth={3} /> : n}
@@ -399,6 +401,26 @@ export default function RFQForm() {
                                     </div>
                                 </div>
                             )}
+                        </div>
+                    </div>
+                )}
+
+                {/* ── STEP 2: No type selected yet ── */}
+                {step === 2 && !general.type && (
+                    <div className="bg-surface border border-border-default p-6">
+                        <SectionTitle>Technical Specifications</SectionTitle>
+                        <p className="text-sm mb-5" style={{ color: 'var(--text-secondary)' }}>
+                            Select a Tool Type to load the technical specification form.
+                        </p>
+                        <div className="max-w-xs">
+                            <Input
+                                label="Tool Type"
+                                variant="select"
+                                value={general.type}
+                                onChange={e => setGeneral(p => ({ ...p, type: e.target.value }))}
+                                options={options.toolType}
+                                required
+                            />
                         </div>
                     </div>
                 )}
@@ -696,37 +718,23 @@ export default function RFQForm() {
                                         </Button>
                                     )}
                                     {step < TOTAL_STEPS ? (
-                                        <Button variant="primary" onClick={handleNext} disabled={loading || !general.type}>
+                                        <Button variant="primary" onClick={handleNext} disabled={loading}>
                                             Next <ChevronRight size={16} />
                                         </Button>
-                                    ) : (
+                                    ) : canSubmit ? (
                                         <Button
                                             variant="primary"
                                             onClick={() => submitRFQ(false)}
-                                            disabled={loading || !canSubmit}
+                                            disabled={loading}
                                         >
                                             <Send size={16} />
                                             {loading ? 'Submitting...' : 'Submit for Approval'}
                                         </Button>
-                                    )}
+                                    ) : null}
                                 </div>
                             </div>
 
-                            {/* Inline validation hints */}
-                            {step < TOTAL_STEPS && missing.length > 0 && feedback?.type === 'error' && (
-                                <div className="mt-3 p-3 border border-dashed" style={{ borderColor: 'var(--brand-danger)', backgroundColor: 'rgba(239,68,68,0.04)' }}>
-                                    <p className="text-xs font-semibold mb-1" style={{ color: 'var(--brand-danger)' }}>
-                                        Complete these fields before continuing:
-                                    </p>
-                                    <ul className="space-y-0.5">
-                                        {missing.map(f => (
-                                            <li key={f} className="text-xs flex items-center gap-1.5" style={{ color: 'var(--brand-danger)' }}>
-                                                <span>•</span> {f}
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            )}
+                            {/* Step 3 hint: what's still needed to unlock Submit */}
                             {step === TOTAL_STEPS && step3Missing.length > 0 && (
                                 <div className="mt-3 p-3 border border-dashed" style={{ borderColor: 'var(--status-pending)', backgroundColor: 'rgba(245,158,11,0.04)' }}>
                                     <p className="text-xs font-semibold mb-1" style={{ color: 'var(--status-pending)' }}>

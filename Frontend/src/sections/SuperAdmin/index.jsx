@@ -4,6 +4,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import NavBar from '../../components/layout/NavBar';
 import UserManagement from './UserManagement';
+import UserDetails from '../../components/layout/UserDetails';
 
 function getStoredUser() {
     try { return JSON.parse(localStorage.getItem('user') || '{}'); } catch { return {}; }
@@ -33,6 +34,7 @@ export default function SuperAdminDashboard() {
                 <Routes>
                     <Route index element={<Navigate to="Users" replace />} />
                     <Route path="Users" element={<UserManagement />} />
+                    <Route path="user/:id" element={<UserDetails />} />
                 </Routes>
             </div>
         </div>

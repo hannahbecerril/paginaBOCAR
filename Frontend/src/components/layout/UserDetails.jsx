@@ -155,6 +155,9 @@ export default function UserDetails() {
         try {
             if (isCreating) {
                 let created;
+                const pathBase = location.pathname.includes('/SuperAdmin') ? '/SuperAdmin'
+                    : location.pathname.includes('/Purchases') ? '/Purchases'
+                    : '/Industrialization';
                 if (isNewSupplier) {
                     created = await createSupplier({
                         username: formData.username,
@@ -162,7 +165,7 @@ export default function UserDetails() {
                         password: formData.password,
                         rol:      'Supplier',
                     });
-                    navigate(`/Purchases/supplier/${created.id}`);
+                    navigate(`${pathBase}/supplier/${created.id}`);
                 } else {
                     created = await createUser({
                         username: formData.username,
@@ -170,7 +173,7 @@ export default function UserDetails() {
                         password: formData.password,
                         rol:      formData.rol ?? 'Industrialization',
                     });
-                    navigate(`/Industrialization/user/${created.id}`);
+                    navigate(`${pathBase}/user/${created.id}`);
                 }
             } else {
                 const payload = {};

@@ -1,7 +1,7 @@
 // sections/Suppliers/QuoteForm.jsx
 // Full cost-breakdown quote form for suppliers. Mirrors the backend MOLD_COSTBR_P*_S / DIE_COSTBR_P*_S models.
 import { useState, useEffect } from 'react';
-import { Save, Send, ChevronRight } from 'lucide-react';
+import { Save, Send, ChevronRight, ChevronLeft, Check } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import { submitQuote } from '../api';
 
@@ -548,7 +548,7 @@ function SummaryTableDie({ data, onChange }) {
 }
 
 export default function QuoteForm({ rfqId, rfqType, existingResponses = [], onSubmitSuccess }) {
-    const [activeTab, setActiveTab] = useState(0);
+    const [activeStep, setActiveTab] = useState(0);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(null);
@@ -858,74 +858,112 @@ export default function QuoteForm({ rfqId, rfqType, existingResponses = [], onSu
     ];
 
     const tabs = rfqType === 'mold' ? moldTabs : dieTabs;
+    const TOTAL = tabs.length;
+
+    // A step is "done" if any value in its primary data part is non-null/non-empty
+    const isStepDone = (idx) => {
+        const moldParts = ['p1', 'p2', 'p3', 'p4', 'p5', 'cav1', 'cav2', 'cav3', 'info1'];
+        const dieParts  = ['p1', 'p2', 'p3', 'p4', 'info1'];
+        const parts = rfqType === 'mold' ? moldParts : dieParts;
+        const key = parts[idx];
+        if (!key) return false;
+        return Object.values(formData[key] ?? {}).some(v => v !== null && v !== '' && v !== 0 && v !== undefined);
+    };
 
     return (
         <div>
-            <p className="text-xs uppercase tracking-wider mb-3" style={{ color: 'var(--text-tertiary)' }}>
-                Cost Breakdown — {rfqType === 'mold' ? 'Mold' : 'Die'} Quote Form
-            </p>
-
-            {/* Tab bar */}
-            <div className="flex border-b border-border-default mb-4 overflow-x-auto">
-                {tabs.map((tab, idx) => (
-                    <button
-                        key={idx}
-                        onClick={() => setActiveTab(idx)}
-                        className={`px-4 py-2 text-xs font-medium whitespace-nowrap transition-colors ${
-                            activeTab === idx
-                                ? 'border-b-2 border-brand-accent text-brand-accent'
-                                : 'text-text-secondary hover:text-text-primary'
-                        }`}
-                    >
-                        {tab.label}
-                    </button>
-                ))}
+            {/* ── Stepper ── */}
+            <div className="flex items-center mb-8 overflow-x-auto pb-1">
+                {tabs.map((tab, idx) => {
+                    const isActive = activeStep === idx;
+                    const isDone   = isStepDone(idx);
+                    const stepNum  = idx + 1;
+                    return (
+                        <div key={idx} className="flex items-center flex-shrink-0">
+                            <button
+                                onClick={() => setActiveTab(idx)}
+                                className="flex flex-col items-center gap-1.5 group"
+                                style={{ minWidth: '60px' }}
+                            >
+                                <div
+                                    className="w-9 h-9 flex items-center justify-center text-sm font-bold flex-shrink-0 transition-all"
+                                    style={{
+                                        backgroundColor: isDone
+                                            ? 'var(--status-active)'
+                                            : isActive
+                                                ? 'var(--brand-accent)'
+                                                : 'var(--surface-hover)',
+                                        color: isDone || isActive ? '#fff' : 'var(--text-tertiary)',
+                                        border: isDone || isActive
+                                            ? 'none'
+                                            : '1px solid var(--border-default)',
+                                    }}
+                                >
+                                    {isDone && !isActive ? <Check size={16} strokeWidth={3} /> : stepNum}
+                                </div>
+                                <span
+                                    className="text-[10px] font-medium text-center leading-tight"
+                                    style={{
+                                        color: isActive ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                                        maxWidth: '60px',
+                                    }}
+                                >
+                                    {tab.label}
+                                </span>
+                            </button>
+                            {idx < TOTAL - 1 && (
+                                <div
+                                    className="h-px flex-1 mx-2 flex-shrink-0"
+                                    style={{
+                                        width: '24px',
+                                        backgroundColor: isStepDone(idx) ? 'var(--status-active)' : 'var(--border-default)',
+                                    }}
+                                />
+                            )}
+                        </div>
+                    );
+                })}
             </div>
 
-            {/* Active tab content */}
+            {/* ── Step content ── */}
             <div className="min-h-[300px]">
-                {tabs[activeTab]?.render()}
+                {tabs[activeStep]?.render()}
             </div>
 
-            {/* Navigation between tabs */}
-            {activeTab < tabs.length - 1 && (
-                <div className="flex justify-end mb-4">
-                    <button
-                        onClick={() => setActiveTab(activeTab + 1)}
-                        className="flex items-center gap-1 text-sm"
-                        style={{ color: 'var(--brand-accent)' }}
-                    >
-                        Next: {tabs[activeTab + 1]?.label} <ChevronRight size={14} />
-                    </button>
+            {/* ── Step navigation ── */}
+            <div className="flex items-center justify-between mt-6 pt-4 border-t border-border-default">
+                <div>
+                    {activeStep > 0 && (
+                        <Button variant="outline" onClick={() => setActiveTab(s => s - 1)}>
+                            <ChevronLeft size={14} /> Back
+                        </Button>
+                    )}
                 </div>
-            )}
-
-            {/* Feedback */}
-            {error && (
-                <div className="mb-3 px-3 py-2 text-sm border" style={{ color: 'var(--brand-danger)', borderColor: 'var(--brand-danger)', backgroundColor: 'rgba(239,68,68,0.1)' }}>
-                    {error}
-                </div>
-            )}
-            {success && (
-                <div className="mb-3 px-3 py-2 text-sm border" style={{ color: 'var(--status-active)', borderColor: 'var(--status-active)', backgroundColor: 'rgba(16,185,129,0.1)' }}>
-                    {success}
-                </div>
-            )}
-
-            {/* Submit buttons */}
-            <div className="flex justify-end gap-3 pt-4 border-t border-border-default">
-                <Button variant="outline" disabled={saving} onClick={() => handleSubmit(true)}>
-                    <Save size={14} /> {saving ? 'Saving…' : 'Save Draft'}
-                </Button>
-                {isQuoteComplete(formData) && (
-                    <Button variant="primary" disabled={saving} onClick={() => handleSubmit(false)}>
-                        <Send size={14} /> {saving ? 'Submitting…' : 'Submit Final Quote'}
+                <div className="flex items-center gap-3">
+                    {/* Feedback inline */}
+                    {error && (
+                        <span className="text-xs" style={{ color: 'var(--brand-danger)' }}>{error}</span>
+                    )}
+                    {success && (
+                        <span className="text-xs" style={{ color: 'var(--status-active)' }}>{success}</span>
+                    )}
+                    <Button variant="outline" disabled={saving} onClick={() => handleSubmit(true)}>
+                        <Save size={14} /> {saving ? 'Saving…' : 'Save Draft'}
                     </Button>
-                )}
+                    {activeStep < TOTAL - 1 ? (
+                        <Button variant="primary" onClick={() => setActiveTab(s => s + 1)}>
+                            Next <ChevronRight size={14} />
+                        </Button>
+                    ) : isQuoteComplete(formData) ? (
+                        <Button variant="primary" disabled={saving} onClick={() => handleSubmit(false)}>
+                            <Send size={14} /> {saving ? 'Submitting…' : 'Submit Final Quote'}
+                        </Button>
+                    ) : null}
+                </div>
             </div>
-            {!isQuoteComplete(formData) && (
+            {activeStep === TOTAL - 1 && !isQuoteComplete(formData) && (
                 <p className="text-xs mt-2 text-right" style={{ color: 'var(--text-tertiary)' }}>
-                    Fill in Company and Country in the P1 tab to unlock final submission.
+                    Fill in Company and Country in P1 to unlock final submission.
                 </p>
             )}
         </div>
