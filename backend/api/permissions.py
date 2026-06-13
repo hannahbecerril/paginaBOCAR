@@ -56,6 +56,19 @@ class IsIndUser(BasePermission):
             request.user.groups.filter(name__in=grupos_permitidos).exists()
         )
 
+class IsInternalUser(BasePermission):
+    """Any non-supplier authenticated staff member (Ind, Purchases, SuperAdmin)."""
+    def has_permission(self, request, view):
+        grupos_permitidos = [
+            'SuperAdmin', 'Industrialization', 'Industrialization_Admin',
+            'Purchases', 'Purchases_Admin',
+        ]
+        return bool(
+            request.user and
+            request.user.is_authenticated and
+            request.user.groups.filter(name__in=grupos_permitidos).exists()
+        )
+
 class IsSupplier(BasePermission):
     """
     Permite el acceso ÚNICAMENTE a los usuarios externos (Proveedores).

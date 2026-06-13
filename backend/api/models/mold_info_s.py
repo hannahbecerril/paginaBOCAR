@@ -1,5 +1,6 @@
 from django.db import models
-from .base import RFQ_Base, Suppliers
+from .base import RFQ_Base
+from django.contrib.auth.models import User
 
 
 # ── MOLD_INFO_P1_S ────────────────────────────────────────────
@@ -8,7 +9,7 @@ class MOLD_INFO_P1_S(models.Model):
         RFQ_Base, on_delete=models.CASCADE, related_name='mold_info_p1_s_rfq'
     )
     supplier = models.ForeignKey(
-        Suppliers, on_delete=models.PROTECT, related_name='mold_info_p1_s_supplier', null=True, blank=True
+        User, on_delete=models.PROTECT, related_name='mold_info_p1_s_supplier', null=True, blank=True
     )
 
     # Material Cost - M1
@@ -76,7 +77,7 @@ class MOLD_INFO_P1_S(models.Model):
     SPPT_Cav_TBd = models.FloatField(null=True, blank=True)
 
     # Currency
-    Curr = models.CharField(max_length=10, blank=True)
+    Curr = models.CharField(max_length=10, null=True, blank=True)
 
     class Meta:
         db_table = 'MOLD_INFO_P1_S'
@@ -91,16 +92,16 @@ class MOLD_INFO_P1_S(models.Model):
 class MOLD_INFO_P2_S(models.Model):
 
     id_rfq = models.ForeignKey(RFQ_Base, on_delete=models.CASCADE, related_name='mold_info_p2_s_rfq')
-    supplier = models.ForeignKey(Suppliers, on_delete=models.PROTECT, related_name='mold_info_p2_s_supplier', null=True, blank=True)
+    supplier = models.ForeignKey(User, on_delete=models.PROTECT, related_name='mold_info_p2_s_supplier', null=True, blank=True)
 
 
-    SUPP = models.CharField(max_length=255, blank=True)
-    SIGN = models.CharField(max_length=255, blank=True)
+    SUPP = models.CharField(max_length=255, null=True, blank=True)
+    SIGN = models.CharField(max_length=255, null=True, blank=True)
     DATE = models.DateTimeField(null=True, blank=True)
-    PREP = models.CharField(max_length=255, blank=True)
-    QT_No = models.CharField(max_length=255, blank=True)
-    INC = models.CharField(max_length=255, blank=True)
-    Comment = models.CharField(max_length=500, blank=True)
+    PREP = models.CharField(max_length=255, null=True, blank=True)
+    QT_No = models.CharField(max_length=255, null=True, blank=True)
+    INC = models.CharField(max_length=255, null=True, blank=True)
+    Comment = models.CharField(max_length=500, null=True, blank=True)
 
     class Meta:
         db_table = 'MOLD_INFO_P2_S'

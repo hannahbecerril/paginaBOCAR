@@ -1,5 +1,6 @@
 from django.db import models
-from .base import RFQ_Base, Suppliers
+from .base import RFQ_Base
+from django.contrib.auth.models import User
 
 # ── MOLD_COSTBR_P1_S ─────────────────────────────────────────
 class MOLD_COSTBR_P1_S(models.Model):
@@ -7,23 +8,23 @@ class MOLD_COSTBR_P1_S(models.Model):
         RFQ_Base, on_delete=models.CASCADE, related_name='mold_costbr_p1_s_rfq'
     )
     supplier = models.ForeignKey(
-        Suppliers, on_delete=models.PROTECT, related_name='mold_costbr_p1_s_supplier', null=True, blank=True
+        User, on_delete=models.PROTECT, related_name='mold_costbr_p1_s_supplier', null=True, blank=True
     )
 
-    Company = models.CharField(max_length=255, blank=True)
-    Elaborated_by = models.CharField(max_length=255, blank=True)
-    Country = models.CharField(max_length=255, blank=True)
-    Base_currency = models.CharField(max_length=50, blank=True)
-    Last_edited_by = models.CharField(max_length=255, blank=True)
+    Company = models.CharField(max_length=255, null=True, blank=True)
+    Elaborated_by = models.CharField(max_length=255, null=True, blank=True)
+    Country = models.CharField(max_length=255, null=True, blank=True)
+    Base_currency = models.CharField(max_length=50, null=True, blank=True)
+    Last_edited_by = models.CharField(max_length=255, null=True, blank=True)
     Last_change = models.DateTimeField(null=True, blank=True)
-    Tool_dimensions_Fixed_Side_1_in_mm = models.CharField(max_length=255, blank=True)
-    Tool_dimensions_Fixed_Side_2_in_mm = models.CharField(max_length=255, blank=True)
-    Tool_dimensions_Fixed_Side_3_in_mm = models.CharField(max_length=255, blank=True)
-    Tool_dimensions_Ejector_Side_1_in_mm = models.CharField(max_length=255, blank=True)
-    Tool_dimensions_Ejector_Side_2_in_mm = models.CharField(max_length=255, blank=True)
-    Tool_dimensions_Ejector_Side_3_in_mm = models.CharField(max_length=255, blank=True)
-    Tool_weight_Fixed_Side_in_kg = models.CharField(max_length=255, blank=True)
-    Tool_weight_Ejector_Side_in_kg = models.CharField(max_length=255, blank=True)
+    Tool_dimensions_Fixed_Side_1_in_mm = models.CharField(max_length=255, null=True, blank=True)
+    Tool_dimensions_Fixed_Side_2_in_mm = models.CharField(max_length=255, null=True, blank=True)
+    Tool_dimensions_Fixed_Side_3_in_mm = models.CharField(max_length=255, null=True, blank=True)
+    Tool_dimensions_Ejector_Side_1_in_mm = models.CharField(max_length=255, null=True, blank=True)
+    Tool_dimensions_Ejector_Side_2_in_mm = models.CharField(max_length=255, null=True, blank=True)
+    Tool_dimensions_Ejector_Side_3_in_mm = models.CharField(max_length=255, null=True, blank=True)
+    Tool_weight_Fixed_Side_in_kg = models.CharField(max_length=255, null=True, blank=True)
+    Tool_weight_Ejector_Side_in_kg = models.CharField(max_length=255, null=True, blank=True)
 
     # Parker Hydraulic Cylinders
     ParkerHydraulicCylindersSquaresSwitches_Unit = models.FloatField(null=True, blank=True)
@@ -98,7 +99,8 @@ class MOLD_COSTBR_P1_S(models.Model):
 # ── MOLD_COSTBR_P2_S ─────────────────────────────────────────
 class MOLD_COSTBR_P2_S(models.Model):
     id_rfq = models.ForeignKey(RFQ_Base, on_delete=models.CASCADE, related_name='mold_costbr_p2_s_rfq')
-    supplier = models.ForeignKey(Suppliers, on_delete=models.PROTECT, related_name='mold_costbr_p2_s_supplier', null=True, blank=True)
+    supplier = models.ForeignKey(User, on_delete=models.PROTECT, related_name='mold_costbr_p2_s_supplier', null=True, blank=True)
+    Elaborated_by = models.CharField(max_length=255, null=True, blank=True)
 
     # Die Frame
     DieFrame_Unit = models.FloatField(null=True, blank=True)
@@ -189,7 +191,8 @@ class MOLD_COSTBR_P2_S(models.Model):
 # ── MOLD_COSTBR_P3_S ─────────────────────────────────────────
 class MOLD_COSTBR_P3_S(models.Model):
     id_rfq = models.ForeignKey(RFQ_Base, on_delete=models.CASCADE, related_name='mold_costbr_p3_s_rfq')
-    supplier = models.ForeignKey(Suppliers, on_delete=models.PROTECT, related_name='mold_costbr_p3_s_supplier', null=True, blank=True)
+    supplier = models.ForeignKey(User, on_delete=models.PROTECT, related_name='mold_costbr_p3_s_supplier', null=True, blank=True)
+    Elaborated_by = models.CharField(max_length=255, null=True, blank=True)
 
     # Assembly
     Assembly_h = models.FloatField(null=True, blank=True)
@@ -303,7 +306,8 @@ class MOLD_COSTBR_P3_S(models.Model):
 # ── MOLD_COSTBR_P4_S ─────────────────────────────────────────
 class MOLD_COSTBR_P4_S(models.Model):
     id_rfq = models.ForeignKey(RFQ_Base, on_delete=models.CASCADE, related_name='mold_costbr_p4_s_rfq')
-    supplier = models.ForeignKey(Suppliers, on_delete=models.PROTECT, related_name='mold_costbr_p4_s_supplier', null=True, blank=True)
+    supplier = models.ForeignKey(User, on_delete=models.PROTECT, related_name='mold_costbr_p4_s_supplier', null=True, blank=True)
+    Elaborated_by = models.CharField(max_length=255, null=True, blank=True)
 
     # Measure Mold
     MeasureMold_h = models.FloatField(null=True, blank=True)
@@ -383,7 +387,9 @@ class MOLD_COSTBR_P4_S(models.Model):
 # ── MOLD_COSTBR_P5_S ─────────────────────────────────────────
 class MOLD_COSTBR_P5_S(models.Model):
     id_rfq = models.ForeignKey(RFQ_Base, on_delete=models.CASCADE, related_name='mold_costbr_p5_s_rfq')
-    supplier = models.ForeignKey(Suppliers, on_delete=models.PROTECT, related_name='mold_costbr_p5_s_supplier', null=True, blank=True)
+    supplier = models.ForeignKey(User, on_delete=models.PROTECT, related_name='mold_costbr_p5_s_supplier', null=True, blank=True)
+    Elaborated_by = models.CharField(max_length=255, null=True, blank=True)
+
     #Die improvements
     DieImprovements_Unit = models.FloatField(null=True, blank=True)
     DieImprovements_PriceUnit = models.FloatField(null=True, blank=True)

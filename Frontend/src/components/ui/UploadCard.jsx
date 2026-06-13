@@ -110,13 +110,13 @@ export default function UploadCard({
             setFiles(prev => multiple ? [...prev, ...newFiles] : newFiles);
 
             newFiles.forEach(uploadFile => {
-                simulateUpload(uploadFile.id);
+                simulateUpload(uploadFile.id, uploadFile.file);
             });
         }
     };
 
-    // Simulate file upload
-    const simulateUpload = (fileId) => {
+    // Simulate file upload — rawFile is the native File object passed at call time
+    const simulateUpload = (fileId, rawFile) => {
         let progress = 0;
         const interval = setInterval(() => {
             progress += 10;
@@ -129,10 +129,8 @@ export default function UploadCard({
                 setFiles(prev => prev.map(f =>
                     f.id === fileId ? { ...f, status: 'completed' } : f
                 ));
-
-                const completedFile = files.find(f => f.id === fileId);
-                if (completedFile && onFileUpload) {
-                    onFileUpload(completedFile);
+                if (onFileUpload) {
+                    onFileUpload(rawFile);
                 }
             }
         }, 200);

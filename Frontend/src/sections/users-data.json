@@ -1,0 +1,212 @@
+{
+  "users": [
+    {
+      "id": "maria-garcia",
+      "name": "Maria Garcia",
+      "email": "maria.garcia@bocar.com",
+      "role": "Industrialization Manager",
+      "department": "Industrialization",
+      "status": "active",
+      "lastLogin": "Today, 10:30 AM",
+      "createdAt": "2024-01-15",
+      "createdBy": "System Admin",
+      "avatar": null,
+      "recentActivity": [
+        { "action": "Approved RFQ SOL-001", "date": "Today, 10:30 AM" },
+        { "action": "Reviewed draft SOL-002", "date": "Yesterday, 3:45 PM" },
+        { "action": "Created new RFQ SOL-008", "date": "Mar 28, 2024" },
+        { "action": "Sent RFQ SOL-005 to Purchases", "date": "Mar 25, 2024" }
+      ],
+      "permissions": [
+        "View RFQs",
+        "Create RFQs",
+        "Edit Drafts",
+        "Send to Purchases",
+        "View Reports",
+        "Approve RFQs",
+        "Manage Users",
+        "Delete RFQs"
+      ]
+    },
+    {
+      "id": "carlos-lopez",
+      "name": "Carlos Lopez",
+      "email": "carlos.lopez@bocar.com",
+      "role": "Industrialization Engineer",
+      "department": "Industrialization",
+      "status": "active",
+      "lastLogin": "Yesterday, 3:45 PM",
+      "createdAt": "2024-02-20",
+      "createdBy": "Maria Garcia",
+      "avatar": null,
+      "recentActivity": [
+        { "action": "Viewed RFQ SOL-003", "date": "Yesterday, 3:45 PM" },
+        { "action": "Edited draft SOL-004", "date": "Mar 29, 2024" },
+        { "action": "Uploaded technical specs for SOL-006", "date": "Mar 27, 2024" }
+      ],
+      "permissions": [
+        "View RFQs",
+        "Create RFQs",
+        "Edit Drafts",
+        "View Reports"
+      ]
+    },
+    {
+      "id": "ana-torres",
+      "name": "Ana Torres",
+      "email": "ana.torres@bocar.com",
+      "role": "Industrialization Specialist",
+      "department": "Industrialization",
+      "status": "inactive",
+      "lastLogin": "Mar 10, 2025",
+      "createdAt": "2024-03-01",
+      "createdBy": "Maria Garcia",
+      "avatar": null,
+      "recentActivity": [
+        { "action": "Viewed RFQ SOL-002", "date": "Mar 10, 2025" },
+        { "action": "Created draft SOL-007", "date": "Mar 5, 2025" }
+      ],
+      "permissions": [
+        "View RFQs",
+        "Create RFQs",
+        "Edit Drafts"
+      ]
+    },
+    {
+      "id": "mario-garcia",
+      "name": "Mario Garcia",
+      "email": "mario.garcia@bocar.com",
+      "role": "Industrialization Engineer",
+      "department": "Industrialization",
+      "status": "active",
+      "lastLogin": "Today, 2:30 PM",
+      "createdAt": "2024-04-10",
+      "createdBy": "Carlos Lopez",
+      "avatar": null,
+      "recentActivity": [
+        { "action": "Created new RFQ SOL-009", "date": "Today, 2:30 PM" },
+        { "action": "Updated SOL-001 specifications", "date": "Yesterday, 11:00 AM" },
+        { "action": "Reviewed supplier quotes", "date": "Apr 2, 2024" }
+      ],
+      "permissions": [
+        "View RFQs",
+        "Create RFQs",
+        "Edit Drafts",
+        "Send to Purchases",
+        "View Reports"
+      ]
+    },
+    {
+      "id": "laura-fernandez",
+      "name": "Laura Fernandez",
+      "email": "laura.fernandez@bocar.com",
+      "role": "Purchases Manager",
+      "department": "Purchases",
+      "status": "active",
+      "lastLogin": "Today, 9:15 AM",
+      "createdAt": "2024-01-20",
+      "createdBy": "System Admin",
+      "avatar": null,
+      "recentActivity": [
+        { "action": "Approved RFQ SOL-002 for sending", "date": "Today, 9:15 AM" },
+        { "action": "Reviewed supplier list for SOL-005", "date": "Yesterday, 2:00 PM" },
+        { "action": "Sent RFQ SOL-003 to suppliers", "date": "Mar 30, 2024" }
+      ],
+      "permissions": [
+        "View RFQs",
+        "Send to Suppliers",
+        "View Reports",
+        "Manage Suppliers",
+        "Approve Budget"
+      ]
+    },
+    {
+      "id": "roberto-sanchez",
+      "name": "Roberto Sanchez",
+      "email": "roberto.sanchez@bocar.com",
+      "role": "Finance Director",
+      "department": "Finance",
+      "status": "active",
+      "lastLogin": "Yesterday, 11:30 AM",
+      "createdAt": "2024-01-10",
+      "createdBy": "System Admin",
+      "avatar": null,
+      "recentActivity": [
+        { "action": "Approved budget for SOL-004", "date": "Yesterday, 11:30 AM" },
+        { "action": "Reviewed financial reports", "date": "Mar 28, 2024" }
+      ],
+      "permissions": [
+        "View RFQs",
+        "View Reports",
+        "Approve Budget",
+        "Financial Overview"
+      ]
+    },
+    {
+      "id": "john-smith",
+      "name": "John Smith",
+      "email": "john.smith@metalworks.com",
+      "role": "Supplier Representative",
+      "department": "External - MetalWorks Ltd.",
+      "status": "active",
+      "lastLogin": "Today, 8:45 AM",
+      "createdAt": "2024-02-15",
+      "createdBy": "Laura Fernandez",
+      "avatar": null,
+      "recentActivity": [
+        { "action": "Submitted quote for SOL-003", "date": "Today, 8:45 AM" },
+        { "action": "Viewed RFQ SOL-005", "date": "Yesterday, 4:30 PM" },
+        { "action": "Uploaded certification documents", "date": "Apr 1, 2024" }
+      ],
+      "permissions": [
+        "View Assigned RFQs",
+        "Submit Quotes",
+        "Upload Documents",
+        "View Awarded RFQs"
+      ]
+    },
+    {
+      "id": "sarah-johnson",
+      "name": "Sarah Johnson",
+      "email": "sarah@steelsolutions.com",
+      "role": "Supplier Sales Manager",
+      "department": "External - Steel Solutions Inc.",
+      "status": "inactive",
+      "lastLogin": "Mar 25, 2025",
+      "createdAt": "2024-03-05",
+      "createdBy": "Laura Fernandez",
+      "avatar": null,
+      "recentActivity": [
+        { "action": "Viewed RFQ SOL-006", "date": "Mar 25, 2025" },
+        { "action": "Started draft response", "date": "Mar 20, 2025" }
+      ],
+      "permissions": [
+        "View Assigned RFQs",
+        "Submit Quotes",
+        "Upload Documents"
+      ]
+    },
+    {
+      "id": "mike-brown",
+      "name": "Mike Brown",
+      "email": "mike@industrialparts.com",
+      "role": "Supplier Account Manager",
+      "department": "External - Industrial Parts Co.",
+      "status": "active",
+      "lastLogin": "Yesterday, 1:20 PM",
+      "createdAt": "2024-03-12",
+      "createdBy": "Laura Fernandez",
+      "avatar": null,
+      "recentActivity": [
+        { "action": "Submitted final quote for SOL-002", "date": "Yesterday, 1:20 PM" },
+        { "action": "Requested specification clarification", "date": "Apr 3, 2024" }
+      ],
+      "permissions": [
+        "View Assigned RFQs",
+        "Submit Quotes",
+        "Upload Documents",
+        "Request Information"
+      ]
+    }
+  ]
+}

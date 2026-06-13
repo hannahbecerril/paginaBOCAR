@@ -1,0 +1,16 @@
+{
+  "industrialization": {
+    "allRFQExclude": ["industrialization draft", "purchases draft", "suppliers draft"],
+    "drafts": ["industrialization draft"]
+  },
+  "purchases": {
+    "allRFQExclude": ["industrialization draft", "purchases draft", "sent to purchases"],
+    "drafts": ["purchases draft"],
+    "inbox": ["sent to purchases"]
+  },
+  "suppliers": {
+    "allRFQ": ["waiting for suppliers", "supplier selected", "rfq closed", "supplier response"],
+    "drafts": ["supplier draft"],
+    "inbox": ["sent to suppliers"]
+  }
+}

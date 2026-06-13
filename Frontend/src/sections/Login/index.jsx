@@ -1,11 +1,11 @@
+// sections/Login/Login.jsx
 import { useState } from 'react';
-import { Building, Users, Shield, ArrowRight } from 'lucide-react'; 
+import { Building, Users, Shield, ArrowRight } from 'lucide-react';
 import Cookies from 'js-cookie';
 import CryptoJS from 'crypto-js';
-import Button from '../../components/ui/Button'; // Ajusta las rutas si es necesario
-import Input from '../../components/ui/Input';   // Ajusta las rutas si es necesario
+import Button from '../../components/ui/Button';
+import Input from '../../components/ui/Input';
 
-// Se recibe la prop onLogin
 export default function Login({ onLogin }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -13,23 +13,39 @@ export default function Login({ onLogin }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Función para ordenar las llaves del objeto alfabéticamente (para HMAC)
+  const getSortedObject = (obj) => {
+    return Object.keys(obj)
+      .sort()
+      .reduce((result, key) => {
+        result[key] = obj[key];
+        return result;
+      }, {});
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
     try {
-      let url = 'http://127.0.0.1:8000/api/auth/login/interno/';
+      const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
       let headers = { 'Content-Type': 'application/json' };
-
-      const payloadObj = { password, username };
-      const bodyString = JSON.stringify(payloadObj);
+      let url;
+      let bodyString;
 
       if (userType === 'supplier') {
-        url = 'http://127.0.0.1:8000/api/auth/login/proveedor/';
-        const secretKey = 'secret_key'; 
+        // Supplier: keys must be sorted alphabetically for HMAC validation
+        const payloadObj = getSortedObject({ password, username });
+        bodyString = JSON.stringify(payloadObj);
+        const secretKey = import.meta.env.VITE_PROVEEDOR_HMAC_KEY ?? 'clave_secreta';
         const hash = CryptoJS.HmacSHA256(bodyString, secretKey).toString(CryptoJS.enc.Hex);
         headers['X-Signature'] = hash;
+        url = `${BASE_URL}/api/auth/login/proveedor/`;
+      } else {
+        // Internal staff: no signature needed, no key sorting required
+        bodyString = JSON.stringify({ username, password });
+        url = `${BASE_URL}/api/auth/login/interno/`;
       }
 
       const response = await fetch(url, {
@@ -39,27 +55,40 @@ export default function Login({ onLogin }) {
       });
 
       const data = await response.json();
-      
-      console.log("Respuesta exacta del backend:", data);
-      
-      if (!response.ok) throw new Error(data.error || 'Error de autenticación');
 
-      Cookies.set('access_token', data.access, { expires: 1, sameSite: 'strict' });
-      Cookies.set('refresh_token', data.refresh, { expires: 7, sameSite: 'strict' });
-      
+      if (!response.ok) {
+        throw new Error(data.error || 'Authentication error');
+      }
 
-      const rolDetectado = data?.usuario?.grupos?.[0] || data?.usuario?.groups?.[0] || data?.usuario?.rol || 'Industrialization';
+      // Guardar tokens
+      if (data.access) {
+        Cookies.set('access_token', data.access, { expires: 1, sameSite: 'strict' });
+      }
+      if (data.refresh) {
+        Cookies.set('refresh_token', data.refresh, { expires: 7, sameSite: 'strict' });
+      }
 
-      console.log("Rol que detectó React:", rolDetectado);
+      // Detect role from backend response — backend always uses `grupos` (never `groups`)
+      const rolDetectado = data?.usuario?.grupos?.[0] ?? 'Industrialization';
 
+      // Normalizar el rol (eliminar _Admin si existe para las rutas)
+      let rolParaRuta = rolDetectado;
+      if (rolDetectado.includes('_Admin')) {
+        rolParaRuta = rolDetectado.replace('_Admin', '');
+      }
+
+      // Guardar usuario en localStorage con la información completa
       const userToSave = {
         ...data.usuario,
-        rol: rolDetectado
+        rol: rolDetectado,
+        rolParaRuta: rolParaRuta
       };
       localStorage.setItem('user', JSON.stringify(userToSave));
 
-
-      onLogin(rolDetectado);
+      // Llamar al callback con el rol detectado
+      if (onLogin) {
+        onLogin(rolDetectado);
+      }
 
     } catch (err) {
       setError(err.message);
@@ -82,7 +111,7 @@ export default function Login({ onLogin }) {
             e.target.style.display = 'none';
           }}
         >
-          <source src="BOCAR_video.mp4" type="video/mp4" />
+          <source src="/BOCAR_video.mp4" type="video/mp4" />
         </video>
         <div className="absolute inset-0 opacity-20"
           style={{
@@ -96,8 +125,8 @@ export default function Login({ onLogin }) {
         {/* Logo Section */}
         <div className="relative z-10">
           <div className="flex flex-col items-start gap-3 text-white">
-            <div className="w-60 flex items-center justify-center rounded">
-              <img src="BOCAR_logoLight.png" alt="BOCAR Logo" />
+            <div className="w-60 flex items-center justify-center">
+              <img src="/BOCAR_logoLight.png" alt="BOCAR Logo" />
             </div>
           </div>
         </div>

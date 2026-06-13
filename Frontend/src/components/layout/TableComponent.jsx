@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
+import { STATUS_LABEL } from '../../constants/rfqStatus';
 
 export default function TableComponent({
     title,
@@ -197,34 +198,51 @@ export default function TableComponent({
                     </span>
                 );
 
-            case 'rfq-status':
+            case 'rfq-status': {
+                // Keys are snake_case matching backend STATUS constants
                 const rfqStatusStyles = {
-                    "Industrialization Draft": { color: 'var(--text-tertiary)', backgroundColor: 'var(--surface-disabled)', borderColor: 'var(--border-default)' },
-                    "Sent to Purchases": { color: 'var(--status-active)', backgroundColor: 'rgba(16, 185, 129, 0.1)', borderColor: 'var(--status-active)' },
-
-                    "Purchases Draft": { color: 'var(--text-tertiary)', backgroundColor: 'var(--surface-disabled)', borderColor: 'var(--border-default)' },
-                    "Sent to Suppliers": { color: 'var(--status-active)', backgroundColor: 'rgba(16, 185, 129, 0.1)', borderColor: 'var(--status-active)' },
-
-                    "Suppliers Draft": { color: 'var(--text-tertiary)', backgroundColor: 'var(--surface-disabled)', borderColor: 'var(--border-default)' },
-                    "Suppliers Response": { color: 'var(--status-completed)', backgroundColor: 'rgba(59, 130, 246, 0.1)', borderColor: 'var(--status-completed)' },
-
-                    "Waiting for Suppliers": { color: 'var(--status-pending)', backgroundColor: 'rgba(245, 158, 11, 0.1)', borderColor: 'var(--status-pending)' },
-                    "Supplier Selected": { color: 'var(--status-completed)', backgroundColor: 'rgba(59, 130, 246, 0.1)', borderColor: 'var(--status-completed)' },
-
-                    "RFQ Closed": { color: 'var(--status-cancelled)', backgroundColor: 'rgba(239, 68, 68, 0.1)', borderColor: 'var(--status-cancelled)' },
+                    'industrialization_draft': { color: 'var(--text-tertiary)',       backgroundColor: 'var(--surface-disabled)',         borderColor: 'var(--border-default)' },
+                    'sent_to_purchases':       { color: 'var(--status-active)',       backgroundColor: 'rgba(16, 185, 129, 0.1)',         borderColor: 'var(--status-active)' },
+                    'purchases_draft':         { color: 'var(--text-tertiary)',       backgroundColor: 'var(--surface-disabled)',         borderColor: 'var(--border-default)' },
+                    'sent_to_suppliers':       { color: 'var(--status-active)',       backgroundColor: 'rgba(16, 185, 129, 0.1)',         borderColor: 'var(--status-active)' },
+                    'waiting_for_suppliers':   { color: 'var(--status-pending)',      backgroundColor: 'rgba(245, 158, 11, 0.1)',         borderColor: 'var(--status-pending)' },
+                    'supplier_selected':       { color: 'var(--status-completed)',    backgroundColor: 'rgba(59, 130, 246, 0.1)',         borderColor: 'var(--status-completed)' },
+                    'rfq_closed':              { color: 'var(--status-cancelled)',    backgroundColor: 'rgba(239, 68, 68, 0.1)',          borderColor: 'var(--status-cancelled)' },
+                    
+                    // Custom Supplier Statuses (AQUÍ ESTÁ LA MAGIA)
+                    'You were the winner for this RFQ': { color: 'var(--status-active)', backgroundColor: 'rgba(16, 185, 129, 0.1)',      borderColor: 'var(--status-active)' },
+                    'You have been assigned this RFQ':  { color: 'var(--status-completed)', backgroundColor: 'rgba(59, 130, 246, 0.1)',   borderColor: 'var(--status-completed)' },
+                    'Waiting for response':             { color: 'var(--status-pending)',   backgroundColor: 'rgba(245, 158, 11, 0.1)',   borderColor: 'var(--status-pending)' },
+                    'Pending':                          { color: 'var(--text-tertiary)',    backgroundColor: 'var(--surface-disabled)',   borderColor: 'var(--border-default)' },
+                    'Not Selected':                     { color: 'var(--status-cancelled)', backgroundColor: 'rgba(239, 68, 68, 0.1)',    borderColor: 'var(--status-cancelled)' },
                 };
-                const rfqStatusStyle = rfqStatusStyles[value?.toLowerCase()] || { color: 'var(--text-secondary)', backgroundColor: 'var(--surface-hover)', borderColor: 'var(--border-default)' };
+                
+                const rfqStatusStyle = rfqStatusStyles[value] || { color: 'var(--text-secondary)', backgroundColor: 'var(--surface-hover)', borderColor: 'var(--border-default)' };
+                
+                // Display human-readable label; fall back to raw value if unknown
+                const rfqStatusLabel = STATUS_LABEL[value] ?? value;
+                
+                // Condición para agregar el icono de trofeo
+                const isWinner = value === 'You were the winner for this RFQ';
+
                 return (
-                    <span className="inline-flex justify-center px-2.5 py-0.5 text-xs font-medium border" style={rfqStatusStyle}>
-                        {value}
+                    <span 
+                        className="inline-flex items-center justify-center gap-1 px-2.5 py-0.5 text-xs font-medium border" 
+                        style={rfqStatusStyle}
+                    >
+                        {isWinner && <span></span>}
+                        {rfqStatusLabel}
                     </span>
                 );
+            }
 
             case 'priority':
+                if (!value) return <span className="text-sm" style={{ color: 'var(--text-tertiary)' }}>—</span>;
                 const priorityStyles = {
                     high: { color: 'var(--priority-high)', backgroundColor: 'rgba(239, 68, 68, 0.1)', borderColor: 'var(--priority-high)' },
                     medium: { color: 'var(--priority-medium)', backgroundColor: 'rgba(245, 158, 11, 0.1)', borderColor: 'var(--priority-medium)' },
-                    low: { color: 'var(--priority-low)', backgroundColor: 'rgba(16, 185, 129, 0.1)', borderColor: 'var(--priority-low)' }
+                    low: { color: 'var(--priority-low)', backgroundColor: 'rgba(16, 185, 129, 0.1)', borderColor: 'var(--priority-low)' },
+                    critical: { color: '#dc2626', backgroundColor: 'rgba(220, 38, 38, 0.15)', borderColor: '#dc2626', fontWeight: 700 },
                 };
                 const priorityStyle = priorityStyles[value?.toLowerCase()] || { color: 'var(--text-secondary)', backgroundColor: 'var(--surface-hover)', borderColor: 'var(--border-default)' };
                 return (
@@ -353,9 +371,6 @@ export default function TableComponent({
                                             </div>
                                         </th>
                                     ))}
-                                    <th className="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
-                                        Actions
-                                    </th>
                                 </tr>
                             </thead>
 
@@ -386,36 +401,6 @@ export default function TableComponent({
                                                     }
                                                 </td>
                                             ))}
-                                            <td className="px-6 py-4 whitespace-nowrap text-right">
-                                                <div className="flex items-center justify-end gap-1">
-                                                    {onEdit && (
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                onEdit(row);
-                                                            }}
-                                                            className="p-2 transition-colors rounded-none hover:text-brand-accent hover:bg-brand-accent/10"
-                                                            style={{ color: 'var(--text-tertiary)' }}
-                                                            title="Edit"
-                                                        >
-                                                            <Pencil size={16} />
-                                                        </button>
-                                                    )}
-                                                    {onDelete && (
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                onDelete(row);
-                                                            }}
-                                                            className="p-2 transition-colors rounded-none hover:text-brand-danger hover:bg-brand-danger/10"
-                                                            style={{ color: 'var(--text-tertiary)' }}
-                                                            title="Delete"
-                                                        >
-                                                            <Trash2 size={16} />
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </td>
                                         </tr>
                                     ))
                                 )}

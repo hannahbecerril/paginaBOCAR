@@ -1,18 +1,20 @@
 import hmac
 import hashlib
 import json
+import os
+from datetime import timedelta
 
-# 1. Django
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Q  # <--- CORRECCIÓN: Q se importa de aquí, no de .models
-from django.http import JsonResponse
+from django.db.models import Q, Count
+from django.db.models.functions import TruncMonth, TruncDay, TruncWeek
+from django.http import JsonResponse, FileResponse, Http404
 from django.shortcuts import get_object_or_404
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.models import User
-from django.http import JsonResponse, FileResponse, Http404
-import os
-# 2. Django REST Framework y Terceros
+from django.utils import timezone
+import requests
+
 from rest_framework import filters, status, viewsets, generics
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -20,589 +22,822 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.generics import ListAPIView, CreateAPIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
-# 3. Importaciones Locales (Tu App)
-from .permissions import IsSuperAdmin, IsIndAdmin, IsIndUser, IsPurchasesAdmin, IsPurchasesUser, IsSupplier
+from .constants import STATUS
+from .permissions import IsSuperAdmin, IsIndAdmin, IsIndUser, IsPurchasesAdmin, IsPurchasesUser, IsSupplier, IsInternalUser
 from .serializers import (
     ArchivoSerializer, UsuarioReadSerializer, UsuarioCreateSerializer,
-    RFQBaseSerializer, ProveedorSerializer
+    UsuarioAdminReadSerializer, UsuarioAdminUpdateSerializer,
+    RFQBaseSerializer, ProveedorSerializer, NotificacionSerializer,
 )
-from .models.base import RFQ_Assignment, Suppliers  # Lo mantenemos si no está en tu __init__.py de models
+from .models.base import RFQ_Assignment
 from .models import (
-    RFQ_Base, Status_RFQ, 
+    RFQ_Base,
     MOLD_INFO_P1_I, MOLD_INFO_P2_I, DIE_TRIM_I,
     MOLD_COSTBR_I, DIE_COSTBR_I,
-    MOLD_COSTBR_P1_S, MOLD_COSTBR_P2_S, MOLD_COSTBR_P3_S, 
+    MOLD_COSTBR_P1_S, MOLD_COSTBR_P2_S, MOLD_COSTBR_P3_S,
     MOLD_COSTBR_P4_S, MOLD_COSTBR_P5_S, Archivo,
-    DIE_COSTBR_P1_S, DIE_COSTBR_P2_S, DIE_COSTBR_P3_S, DIE_COSTBR_P4_S,RFQ_Tracking,
-
+    MOLD_CAVITIES_P1_S, MOLD_CAVITIES_P2_S, MOLD_CAVITIES_P3_S,
+    MOLD_INFO_P1_S, MOLD_INFO_P2_S, DIE_TRIM_S,
+    DIE_COSTBR_P1_S, DIE_COSTBR_P2_S, DIE_COSTBR_P3_S, DIE_COSTBR_P4_S,
+    RFQ_Tracking,
 )
-
-from django.db.models import Count
-from django.db.models.functions import TruncMonth
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
-
-class DashboardProveedorView(APIView):
-    """
-    Dashboard para Proveedores: Volumen de trabajo y Tasa de éxito.
-    """
-    permission_classes = [IsAuthenticated, IsSupplier]
-
-    def get(self, request):
-        usuario_email = request.user.email
-
-        asignaciones = RFQ_Assignment.objects.filter(supplier__email=usuario_email)
-        ids_rfqs_asignados = asignaciones.values_list('id_rfq_id', flat=True)
-
-        rfqs = RFQ_Base.objects.filter(id_rfq__in=ids_rfqs_asignados)
-
-        histograma = rfqs.annotate(
-            mes=TruncMonth('modified_date')
-        ).values('mes').annotate(
-            total=Count('id_rfq')
-        ).order_by('mes')
-
-        borradores = Status_RFQ.objects.filter(id_rfq__in=ids_rfqs_asignados, lev6=True).count()
-        aceptados = asignaciones.filter(is_winner=True).count()
-        
-        declinados = RFQ_Assignment.objects.filter(
-            id_rfq__in=ids_rfqs_asignados, 
-            is_winner=True
-        ).exclude(supplier__email=usuario_email).count()
-
-        success_rate = (aceptados / asignaciones.count() * 100) if asignaciones.count() > 0 else 0
-
-        data_histograma = [
-            {"mes": item['mes'].strftime('%Y-%m'), "total": item['total']} 
-            for item in histograma if item['mes']
-        ]
-
-        return Response({
-            "histograma_mensual": data_histograma,
-            "metricas": {
-                "rfqs_en_borrador": borradores,
-                "rfqs_ganados": aceptados,
-                "rfqs_perdidos": declinados,
-                "win_rate_porcentaje": round(success_rate, 2)
-            }
-        }, status=status.HTTP_200_OK)
-
-
-class DashboardComprasView(APIView):
-    """
-    Dashboard para Compras: Embudo de cotizaciones y Tiempos de respuesta del proveedor.
-    """
-    permission_classes = [IsAuthenticated, IsPurchasesUser]
-
-    def get(self, request):
-        rfqs_activos = Status_RFQ.objects.all()
-        
-        bandeja_entrada = rfqs_activos.filter(lev4=True).count()
-        en_cotizacion = rfqs_activos.filter(lev6=True).count()
-        en_analisis = rfqs_activos.filter(lev7=True).count()
-        listos_para_fallo = rfqs_activos.filter(lev8=True).count()
-
-        total_asignaciones = RFQ_Assignment.objects.count()
-        cotizaciones_recibidas = rfqs_activos.filter(lev7=True).count() 
-        tasa_respuesta = (cotizaciones_recibidas / total_asignaciones * 100) if total_asignaciones > 0 else 0
-
-        # --- LÓGICA DE CÁLCULO DE TIEMPO: Proveedores (Nivel 6 -> Nivel 7) ---
-        tiempos_respuesta_horas = []
-        
-        # Obtenemos los RFQs que ya pasaron por cotización (lev7, lev8 o lev9)
-        rfqs_cotizados = rfqs_activos.filter(lev7=True) | rfqs_activos.filter(lev8=True) | rfqs_activos.filter(lev9=True)
-        rfqs_cotizados_ids = rfqs_cotizados.values_list('id_rfq', flat=True)
-        
-        for rfq_id in rfqs_cotizados_ids:
-            # Buscamos cuándo se publicó a proveedores (lev6) y cuándo respondieron (lev7)
-            # Usamos .order_by('fecha_hora').first() para tomar el primer momento cronológico
-            tracking_lev6 = RFQ_Tracking.objects.filter(id_rfq_id=rfq_id, nivel_alcanzado='lev6').order_by('fecha_hora').first()
-            tracking_lev7 = RFQ_Tracking.objects.filter(id_rfq_id=rfq_id, nivel_alcanzado='lev7').order_by('fecha_hora').first()
-            
-            if tracking_lev6 and tracking_lev7 and tracking_lev7.fecha_hora > tracking_lev6.fecha_hora:
-                diferencia = tracking_lev7.fecha_hora - tracking_lev6.fecha_hora
-                horas = diferencia.total_seconds() / 3600.0
-                tiempos_respuesta_horas.append(horas)
-
-        tiempo_promedio = sum(tiempos_respuesta_horas) / len(tiempos_respuesta_horas) if tiempos_respuesta_horas else 0
-
-        return Response({
-            "funnel_cotizaciones": {
-                "nuevos_requerimientos_lev4": bandeja_entrada,
-                "esperando_proveedores_lev6": en_cotizacion,
-                "analisis_costos_lev7": en_analisis,
-                "pendientes_autorizacion_lev8": listos_para_fallo
-            },
-            "kpis": {
-                "tasa_respuesta_proveedores": round(tasa_respuesta, 2),
-                "tiempo_promedio_respuesta_horas": round(tiempo_promedio, 2)
-            }
-        }, status=status.HTTP_200_OK)
-
-
-class DashboardIndustrializacionView(APIView):
-    """
-    Dashboard para Industrialización: Estatus de proyectos y Lead Time Técnico.
-    """
-    permission_classes = [IsAuthenticated, IsIndUser]
-
-    def get(self, request):
-        rfqs_ind = RFQ_Base.objects.all()
-        ids_ind = rfqs_ind.values_list('id_rfq', flat=True)
-        estados = Status_RFQ.objects.filter(id_rfq__in=ids_ind)
-
-        borradores = estados.filter(lev2=True).count()
-        pendientes_jefatura = estados.filter(lev3=True).count()
-        enviados_a_compras = estados.filter(lev4=True).count()
-        cerrados = estados.filter(lev9=True).count()
-
-        distribucion = rfqs_ind.values('type').annotate(total=Count('id_rfq'))
-        data_distribucion = {item['type']: item['total'] for item in distribucion}
-
-        # --- LÓGICA DE CÁLCULO DE TIEMPO: Lead Time Técnico (Nivel 2 -> Nivel 4) ---
-        lead_times_dias = []
-        
-        # Filtramos los proyectos que ya llegaron a compras (lev4 o superior)
-        rfqs_liberados = estados.exclude(lev1=True, lev2=True, lev3=True).values_list('id_rfq', flat=True)
-
-        for rfq_id in rfqs_liberados:
-            # Cuándo se empezó a trabajar el borrador o se envió definitivo por primera vez
-            tracking_inicio = RFQ_Tracking.objects.filter(id_rfq_id=rfq_id, nivel_alcanzado__in=['lev2', 'lev3']).order_by('fecha_hora').first()
-            # Cuándo fue aprobado por el SuperAdmin de Industrialización
-            tracking_fin = RFQ_Tracking.objects.filter(id_rfq_id=rfq_id, nivel_alcanzado='lev4').order_by('fecha_hora').first()
-
-            if tracking_inicio and tracking_fin and tracking_fin.fecha_hora > tracking_inicio.fecha_hora:
-                diferencia = tracking_fin.fecha_hora - tracking_inicio.fecha_hora
-                # En industrialización el ciclo suele ser más largo, medimos en días
-                dias = diferencia.total_seconds() / 86400.0 
-                lead_times_dias.append(dias)
-
-        lead_time_promedio = sum(lead_times_dias) / len(lead_times_dias) if lead_times_dias else 0
-
-        return Response({
-            "estado_requerimientos": {
-                "en_borrador_lev2": borradores,
-                "esperando_firma_jefe_lev3": pendientes_jefatura,
-                "liberados_a_compras_lev4": enviados_a_compras,
-                "proyectos_adjudicados_lev9": cerrados
-            },
-            "distribucion_herramientas": data_distribucion,
-            "kpis": {
-                "lead_time_tecnico_dias": round(lead_time_promedio, 2)
-            }
-        }, status=status.HTTP_200_OK)
+from .models.notificacion import Notificacion
 
 User = get_user_model()
 
+
+# ── Helper ────────────────────────────────────────────────────────────────────
+
 def registrar_tracking_rfq(rfq_base, nivel, usuario=None):
-    """
-    Función auxiliar para registrar cada cambio de estado en el tiempo.
-    """
     RFQ_Tracking.objects.create(
         id_rfq=rfq_base,
         nivel_alcanzado=nivel,
-        usuario_responsable=usuario
+        usuario_responsable=usuario,
     )
-class FalloFinalGerencialView(APIView):
-    """
-    Endpoint PATCH para que el SuperAdmin de Compras apruebe o rechace 
-    el fallo final (proveedor ganador) seleccionado por el comprador.
-    Maneja la lógica para ambos tipos de herramientas (moldes y troqueles).
-    """
-    permission_classes = [IsAuthenticated, IsPurchasesAdmin]
-
-    @transaction.atomic
-    def patch(self, request, pk):
-        # 1. Obtención de objetos base
-        rfq_base = get_object_or_404(RFQ_Base, pk=pk)
-        status_rfq = get_object_or_404(Status_RFQ, id_rfq=rfq_base.id_rfq)
-        asignacion = get_object_or_404(RFQ_Assignment, id_rfq=rfq_base)
-
-        # 2. Validación de la Máquina de Estados (Debe estar en Nivel 8)
-        if not status_rfq.lev8:
-            return Response(
-                {"error": f"El RFQ {rfq_base.id_rfq} no se encuentra en espera de fallo gerencial (Nivel 8)."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        accion = request.data.get('accion', '').lower()
-        rfq_type_label = "Molde" if rfq_base.type == 'mold' else "Troquel"
-        nivel_alcanzado = None # 1. Inicializamos variable
 
 
-        if accion == 'aprobar':
-            # Transición: Nivel 8 -> Nivel 9 (Licitación Cerrada / Adjudicada)
-            status_rfq.lev8 = False
-            status_rfq.lev9 = True
-            nivel_alcanzado = 'lev9' # 2. Registramos transición
-            mensaje = f"Fallo aprobado exitosamente. El {rfq_type_label} ha sido adjudicado y la licitación está cerrada (Nivel 9)."
-        
-        elif accion == 'rechazar':
-            # Transición: Regresa a Nivel 7 (Análisis de cotizaciones)
-            status_rfq.lev8 = False
-            status_rfq.lev7 = True
-            nivel_alcanzado = 'lev7' # 2. Registramos transición
-            # Limpieza del candidato: Según el requerimiento, borramos al ganador
-            # para que el comprador deba elegir uno nuevo.
-            asignacion.winning_supplier = None
-            asignacion.save()
-            mensaje = f"Fallo rechazado. Se ha revocado la selección del proveedor y el {rfq_type_label} regresa a análisis de cotizaciones (Nivel 7)."
-        
-        else:
-            return Response(
-                {"error": "Acción inválida. Los valores permitidos son 'aprobar' o 'rechazar'."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+def hola(request):
+    return JsonResponse({"mensaje": "Hola desde Django"})
 
-        status_rfq.save()
-        if nivel_alcanzado: # 4. Inyección
-            registrar_tracking_rfq(rfq_base, nivel_alcanzado, request.user)
 
-        return Response({
-            "mensaje": mensaje,
-            "id_rfq": rfq_base.id_rfq,
-            "tipo": rfq_base.type,
-            "proveedor_ganador": asignacion.winning_supplier
-        }, status=status.HTTP_200_OK)
-class DescargarArchivoSeguroView(APIView):
-    """
-    Endpoint GET para descargar archivos físicos de forma segura.
-    Evita la exposición directa de las URLs en el servidor web.
-    """
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request, pk):
-        # Obtenemos el registro de la base de datos
-        archivo_obj = get_object_or_404(Archivo, pk=pk)
-        
-        if not archivo_obj.archivo:
-            raise Http404("El archivo no tiene una ruta física asociada.")
-
-        # Construimos la ruta absoluta del sistema operativo
-        file_path = archivo_obj.archivo.path
-        
-        if not os.path.exists(file_path):
-            raise Http404("El archivo no se encuentra en el servidor.")
-
-        # FileResponse maneja la transferencia en chunks, optimizando la memoria RAM
-        response = FileResponse(open(file_path, 'rb'))
-        # Forzamos la cabecera para que el navegador inicie la descarga con el nombre original
-        response['Content-Disposition'] = f'attachment; filename="{archivo_obj.nombre}"'
-        
-        return response
-class RFQAprobadosListView(generics.ListAPIView):
-    """
-    Endpoint GET que devuelve los RFQ aprobados por Ind (Nivel 4).
-    La lógica de enrutamiento a tablas técnicas se maneja directamente aquí.
-    """
-    serializer_class = RFQBaseSerializer
-    permission_classes = [IsAuthenticated, IsPurchasesUser]
-
-    def get_queryset(self):
-        # Filtramos los IDs que ya pasaron la aprobación de Industrialización
-        rfqs_aprobados_ids = Status_RFQ.objects.filter(lev4=True).values_list('id_rfq', flat=True)
-        return RFQ_Base.objects.filter(id_rfq__in=rfqs_aprobados_ids)
-
-    def list(self, request, *args, **kwargs):
-        # 1. Ejecutamos la lógica estándar de ListAPIView para obtener los datos base
-        queryset = self.get_queryset()
-        serializer = self.get_serializer(queryset, many=True)
-        data = serializer.data  # Esto es una lista de diccionarios
-
-        # 2. Iteramos sobre cada RFQ serializado para inyectar información extra
-        for item in data:
-            rfq_id = item.get('id_rfq')
-            rfq_type = item.get('type')
-
-            if rfq_type == 'mold':
-                # Consultamos la tabla de moldes
-                detalles = MOLD_INFO_P1_I.objects.filter(id_rfq_id=rfq_id).values().first()
-                item['detalles_tecnicos'] = detalles if detalles else {}
-            
-            elif rfq_type == 'die':
-                # Consultamos la tabla de troqueles
-                detalles = DIE_TRIM_I.objects.filter(id_rfq_id=rfq_id).values().first()
-                item['detalles_tecnicos'] = detalles if detalles else {}
-            
-            else:
-                item['detalles_tecnicos'] = {}
-
-        # 3. Retornamos la respuesta modificada manualmente
-        return Response(data)
-class ProveedorListView(generics.ListAPIView):
-    serializer_class = ProveedorSerializer
-    permission_classes = [IsAuthenticated,IsPurchasesUser]
-    filter_backends = [filters.SearchFilter]
-    search_fields = ['username', 'first_name', 'last_name', 'email']
-
-    def get_queryset(self):
-        # Retorna solo usuarios que pertenezcan al grupo de proveedores y estén activos
-        return User.objects.filter(groups__name='Supplier', is_active=True)
-
-class AssignSuppliersRFQView(APIView):
-    """
-    BACK: Selección y Guardado de Proveedores Candidatos
-    Guarda temporalmente la selección y la envía a gerencia (Nivel 5).
-    """
-    permission_classes = [IsAuthenticated, IsPurchasesUser]
-
-    @transaction.atomic
-    def put(self, request, pk):
-        rfq = get_object_or_404(RFQ_Base, pk=pk)
-        status_rfq, created = Status_RFQ.objects.get_or_create(id_rfq=rfq.id_rfq)
-        
-        if not status_rfq.lev4:
-            return Response(
-                {"error": "El RFQ no se encuentra en borrador de compras (Nivel 4)."}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        proveedores_ids = request.data.get('proveedores_ids', [])
-        if not isinstance(proveedores_ids, list) or not proveedores_ids:
-            return Response(
-                {"error": "Debes proporcionar un arreglo válido 'proveedores_ids'."}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        proveedores_validos = Suppliers.objects.filter(id__in=proveedores_ids)
-        if proveedores_validos.count() != len(proveedores_ids):
-            return Response(
-                {"error": "Uno o más IDs de proveedores no son válidos."}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # Actualización relacional masiva en RFQ_Assignment
-        RFQ_Assignment.objects.filter(id_rfq=rfq).delete()
-        nuevas_asignaciones = [
-            RFQ_Assignment(id_rfq=rfq, supplier=proveedor) 
-            for proveedor in proveedores_validos
-        ]
-        RFQ_Assignment.objects.bulk_create(nuevas_asignaciones)
-
-        # Inicializar tablas técnicas (Mold vs Die)
-        if rfq.type == 'mold':
-            for proveedor in proveedores_validos:
-                MOLD_COSTBR_I.objects.get_or_create(id_rfq=rfq, supplier_id=proveedor.id)
-        elif rfq.type == 'die':
-            for proveedor in proveedores_validos:
-                DIE_COSTBR_I.objects.get_or_create(id_rfq=rfq, supplier_id=proveedor.id)
-
-        status_rfq.lev4 = False
-        status_rfq.lev5 = True
-        status_rfq.save()
-        registrar_tracking_rfq(rfq, 'lev5', request.user)
-
-        return Response({ 
-            "message": f"Proveedores guardados para el RFQ {rfq.id_rfq}. Enviado a gerencia.",
-            "cantidad_proveedores": proveedores_validos.count()
-        }, status=status.HTTP_200_OK)
+# ── Auth ──────────────────────────────────────────────────────────────────────
 
 class LoginInternoView(APIView):
     def post(self, request):
         username = request.data.get('username')
         password = request.data.get('password')
 
-        # Validación 1: Campos vacíos
         if not username or not password:
             return Response(
-                {"error": "Se requieren ambos campos: usuario y contraseña."}, 
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Se requieren ambos campos: usuario y contrasena."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Autenticación con el ORM de Django
         user = authenticate(username=username, password=password)
+        if user is None:
+            return Response({"error": "Usuario o contrasena incorrectos."}, status=status.HTTP_401_UNAUTHORIZED)
 
-        if user is not None:
-            # Extraer los nombres de los grupos asignados al usuario en la BD
-            grupos_usuario = list(user.groups.values_list('name', flat=True))
-            
-            # Definir qué grupos son considerados internos
-            roles_internos = [
-                'SuperAdmin', 
-                'Purchases', 
-                'Purchases_Admin', 
-                'Industrialization', 
-                'Industrialization_Admin'
-            ]
-            
-            # Verificar si tiene al menos un rol interno
-            es_interno = any(rol in roles_internos for rol in grupos_usuario)
+        grupos_usuario = list(user.groups.values_list('name', flat=True))
+        roles_internos = ['SuperAdmin', 'Purchases', 'Purchases_Admin', 'Industrialization', 'Industrialization_Admin']
 
-            if not es_interno:
-                return Response(
-                    {"error": "Acceso denegado. Portal exclusivo para personal interno."}, 
-                    status=status.HTTP_403_FORBIDDEN
-                )
+        if not any(rol in roles_internos for rol in grupos_usuario):
+            return Response({"error": "Acceso denegado. Portal exclusivo para personal interno."}, status=status.HTTP_403_FORBIDDEN)
 
-            # Verificar que no esté dado de baja
-            if not user.is_active:
-                return Response(
-                    {"error": "Cuenta deshabilitada. Contacte al administrador."}, 
-                    status=status.HTTP_403_FORBIDDEN
-                )
+        if not user.is_active:
+            return Response({"error": "Cuenta deshabilitada. Contacte al administrador."}, status=status.HTTP_403_FORBIDDEN)
 
-            # Generar los tokens JWT
-            refresh = RefreshToken.for_user(user)
-            
-            # Inyectar los grupos en el token para que el Front sepa qué vistas mostrar
-            refresh['grupos'] = grupos_usuario
+        refresh = RefreshToken.for_user(user)
+        refresh['grupos'] = grupos_usuario
 
-            return Response({
-                'refresh': str(refresh),
-                'access': str(refresh.access_token),
-                'usuario': {
-                    'id': user.id,
-                    'username': user.username,
-                    'email': user.email,
-                    'grupos': grupos_usuario
-                }
-            }, status=status.HTTP_200_OK)
-        else:
-            # Validación 2: Credenciales incorrectas
-            return Response(
-                {"error": "Usuario o contraseña incorrectos."}, 
-                status=status.HTTP_401_UNAUTHORIZED
-            )
-        
+        return Response({
+            'refresh': str(refresh),
+            'access': str(refresh.access_token),
+            'usuario': {'id': user.id, 'username': user.username, 'email': user.email, 'grupos': grupos_usuario},
+        })
+
+
 class LoginProveedorView(APIView):
     def post(self, request):
         username = request.data.get('username')
         password = request.data.get('password')
-        # Obtenemos el hash que el FrontEnd (o el proveedor) debe enviar en los Headers
         firma_recibida = request.headers.get('X-Signature')
 
-        # Validación 1: Campos vacíos
         if not username or not password:
-            return Response(
-                {"error": "Se requieren ambos campos: usuario y contraseña."}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-            
-        if not firma_recibida:
-            return Response(
-                {"error": "Acceso denegado. Falta la firma de seguridad (Hash)."}, 
-                status=status.HTTP_403_FORBIDDEN
-            )
+            return Response({"error": "Se requieren ambos campos: usuario y contrasena."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Validación 2: Verificación del Hash (HMAC)
-        # La llave está en settings.py
+        if not firma_recibida:
+            return Response({"error": "Acceso denegado. Falta la firma de seguridad (Hash)."}, status=status.HTTP_403_FORBIDDEN)
+
         secret_key = getattr(settings, 'PROVEEDOR_SECRET_KEY', 'clave_secreta').encode('utf-8')
-        
-        # Armamos el payload exactamente igual a como lo debe armar quien hace la petición
-        # sort_keys=True es vital para que el orden de los campos no altere el hash
-        payload = {"username": username, "password": password}
-        payload_string = json.dumps(payload, sort_keys=True, separators=(',', ':')).encode('utf-8')
-        
-        # Generamos el hash esperado del lado del servidor
+        payload_string = json.dumps({"password": password, "username": username}, sort_keys=True, separators=(',', ':')).encode('utf-8')
         firma_esperada = hmac.new(secret_key, payload_string, hashlib.sha256).hexdigest()
 
-        # Comparamos la firma recibida con la que nosotros calculamos
         if not hmac.compare_digest(firma_esperada, firma_recibida):
-            return Response(
-                {"error": "Firma inválida. Los datos fueron alterados o la solicitud es ilegítima."}, 
-                status=status.HTTP_403_FORBIDDEN
-            )
+            return Response({"error": "Firma invalida. Los datos fueron alterados o la solicitud es ilegitima."}, status=status.HTTP_403_FORBIDDEN)
 
-        # Validación 3: Autenticación con el ORM de Django (Si el hash es correcto)
         user = authenticate(username=username, password=password)
+        if user is None:
+            return Response({"error": "Usuario o contrasena incorrectos."}, status=status.HTTP_401_UNAUTHORIZED)
 
-        if user is not None:
-            grupos_usuario = list(user.groups.values_list('name', flat=True))
-            
-            # Verificar que pertenezca al grupo de Proveedores (Ajusta el nombre según tu BD)
-            if 'Supplier' not in grupos_usuario:
-                return Response(
-                    {"error": "Acceso denegado. Portal exclusivo para proveedores."}, 
-                    status=status.HTTP_403_FORBIDDEN
-                )
+        grupos_usuario = list(user.groups.values_list('name', flat=True))
+        if 'Supplier' not in grupos_usuario:
+            return Response({"error": "Acceso denegado. Portal exclusivo para proveedores."}, status=status.HTTP_403_FORBIDDEN)
 
-            # Verificar que no esté dado de baja
-            if not user.is_active:
-                return Response(
-                    {"error": "Cuenta deshabilitada. Contacte al administrador."}, 
-                    status=status.HTTP_403_FORBIDDEN
-                )
+        if not user.is_active:
+            return Response({"error": "Cuenta deshabilitada. Contacte al administrador."}, status=status.HTTP_403_FORBIDDEN)
 
-            # Generar los tokens JWT
-            refresh = RefreshToken.for_user(user)
-            refresh['grupos'] = grupos_usuario
+        refresh = RefreshToken.for_user(user)
+        refresh['grupos'] = grupos_usuario
 
-            return Response({
-                'refresh': str(refresh),
-                'access': str(refresh.access_token),
-                'usuario': {
-                    'id': user.id,
-                    'username': user.username,
-                    'email': user.email,
-                    'grupos': grupos_usuario
-                }
-            }, status=status.HTTP_200_OK)
-        else:
+        return Response({
+            'refresh': str(refresh),
+            'access': str(refresh.access_token),
+            'usuario': {'id': user.id, 'username': user.username, 'email': user.email, 'grupos': grupos_usuario},
+        })
+
+
+# ── User Management ───────────────────────────────────────────────────────────
+
+class ListarUsuariosView(ListAPIView):
+    """
+    GET /api/usuarios/listar/
+    ────────────────────────────────────────────────────────────────────────────────────
+    - SuperAdmin → full UsuarioAdminReadSerializer (all fields + date_joined)
+    - Other internal staff → UsuarioReadSerializer (limited fields)
+    Both exclude the Supplier group.
+    """
+    permission_classes = [IsAuthenticated, IsInternalUser]
+
+    def get_serializer_class(self):
+        user = self.request.user
+        if user.groups.filter(name='SuperAdmin').exists():
+            return UsuarioAdminReadSerializer
+        return UsuarioReadSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.groups.filter(name='SuperAdmin').exists():
+            return User.objects.all().order_by('id')
+        return User.objects.exclude(groups__name='Supplier').order_by('id')
+
+
+class CrearUsuarioView(CreateAPIView):
+    queryset = User.objects.all()
+    serializer_class = UsuarioCreateSerializer
+    permission_classes = [IsAuthenticated, IsSuperAdmin]
+
+
+class UsuarioDetailView(APIView):
+    """
+    GET  /api/usuarios/<pk>/  → any internal user can view a user profile.
+    PATCH /api/usuarios/<pk>/ → SuperAdmin only; accepts partial updates via
+                                  UsuarioAdminUpdateSerializer.
+    DELETE /api/usuarios/<pk>/ → SuperAdmin only; hard delete (use is_active
+                                   = False for soft delete instead).
+
+    Accepted PATCH payload keys (all optional):
+        first_name, last_name, email, rol (Group name), is_active, password
+    """
+
+    def get_permissions(self):
+        if self.request.method == 'GET':
+            return [IsAuthenticated(), IsInternalUser()]
+        return [IsAuthenticated(), IsSuperAdmin()]
+
+    def get(self, request, pk):
+        user = get_object_or_404(User, pk=pk)
+        # Return richer data for SuperAdmin
+        if request.user.groups.filter(name='SuperAdmin').exists():
+            return Response(UsuarioAdminReadSerializer(user).data)
+        return Response(UsuarioReadSerializer(user).data)
+
+    def patch(self, request, pk):
+        """
+        Partial update.  Handles both plain field updates and password changes.
+        Examples:
+            {"is_active": false}                     → soft-delete / deactivate
+            {"rol": "Purchases_Admin"}               → change area
+            {"first_name": "Ana", "email": "a@b.c"} → edit profile
+            {"password": "newpass123"}               → reset password inline
+        """
+        user = get_object_or_404(User, pk=pk)
+
+        # Password is handled separately (not part of the model serializer)
+        new_password = request.data.get('password')
+        data = {k: v for k, v in request.data.items() if k != 'password'}
+
+        serializer = UsuarioAdminUpdateSerializer(user, data=data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        if new_password:
+            user.set_password(new_password)
+            user.save(update_fields=['password'])
+
+        return Response(UsuarioAdminReadSerializer(user).data)
+
+    def delete(self, request, pk):
+        """
+        Hard delete.  Prefer PATCH {"is_active": false} for soft-delete.
+        Will refuse to delete the requesting user's own account.
+        """
+        user = get_object_or_404(User, pk=pk)
+        if user == request.user:
             return Response(
-                {"error": "Usuario o contraseña incorrectos."}, 
-                status=status.HTTP_401_UNAUTHORIZED
+                {"error": "No puedes eliminar tu propia cuenta."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
+        user.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ResetPasswordView(APIView):
+    """Placeholder — returns 200; wire to a real email backend in production."""
+    permission_classes = [IsAuthenticated, IsSuperAdmin]
+
+    def post(self, request, pk):
+        user = get_object_or_404(User, pk=pk)
+        return Response({
+            "mensaje": f"Se enviaria un correo de restablecimiento a {user.email}.",
+            "usuario_id": user.id,
+        })
+
 
 class CambiarEstadoUsuarioView(APIView):
-    # Solo usuarios autenticados y SuperAdmins pueden hacer esto
+    """
+    PUT /api/usuarios/<pk>/estado/
+    ────────────────────────────────────────────────────────────────────────────────────
+    Soft-delete (deactivate) or re-activate an internal user.
+    SuperAdmin only.  Cannot deactivate your own account.
+    
+    Body: { "is_active": true | false }
+    Returns: full UsuarioAdminReadSerializer payload.
+    """
     permission_classes = [IsAuthenticated, IsSuperAdmin]
 
     def put(self, request, pk):
-        # Obtener el usuario por su Primary Key (ID) o devolver un error 404
         user = get_object_or_404(User, pk=pk)
 
-        # Obtener el nuevo estado (true o false) desde el cuerpo de la petición (JSON)
-        nuevo_estado = request.data.get('is_active')
-
-        # Asegurarse de que enviaron el campo
-        if nuevo_estado is None:
+        if user == request.user:
             return Response(
-                {"error": "Se requiere el campo 'is_active' en el cuerpo de la petición."},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "No puedes desactivar tu propia cuenta."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Convertir a booleano de forma segura por si llega como string
+        nuevo_estado = request.data.get('is_active')
+
+        if nuevo_estado is None:
+            return Response({"error": "Se requiere el campo 'is_active'."}, status=status.HTTP_400_BAD_REQUEST)
+
         if isinstance(nuevo_estado, str):
             nuevo_estado = nuevo_estado.lower() in ['true', '1', 't', 'y', 'yes']
         else:
             nuevo_estado = bool(nuevo_estado)
 
-        # Aplicar la baja lógica (o reactivación)
         user.is_active = nuevo_estado
-        user.save()
-
-        # Respuesta informativa
-        accion = "reactivado" if nuevo_estado else "dado de baja (suspendido)"
+        user.save(update_fields=['is_active'])
+        accion = 'reactivado' if nuevo_estado else 'desactivado (soft-delete)'
 
         return Response({
-            "mensaje": f"El usuario '{user.username}' ha sido {accion} exitosamente.",
-            "usuario": {
-                "id": user.id,
-                "username": user.username,
-                "is_active": user.is_active
-            }
-        }, status=status.HTTP_200_OK)
-        
-def hola(request):
-    return JsonResponse({"mensaje": "Hola desde Django 🚀"})
+            'mensaje': f"El usuario '{user.username}' ha sido {accion} exitosamente.",
+            'usuario': UsuarioAdminReadSerializer(user).data,
+        })
+
+
+# ── Supplier User Management ──────────────────────────────────────────────────
+
+class ProveedorListView(generics.ListAPIView):
+    """Search suppliers — existing endpoint for Purchases team."""
+    serializer_class = ProveedorSerializer
+    permission_classes = [IsAuthenticated, IsPurchasesUser]
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['username', 'first_name', 'last_name', 'email']
+
+    def get_queryset(self):
+        return User.objects.filter(groups__name='Supplier', is_active=True)
+
+
+class ProveedorListCreateView(APIView):
+    """
+    GET  /api/proveedores/ — list all suppliers (Purchases role)
+    POST /api/proveedores/ — create a new supplier account (SuperAdmin)
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        if self.request.method == 'POST':
+            return [IsAuthenticated(), IsSuperAdmin()]
+        return [IsAuthenticated(), IsPurchasesUser()]
+
+    def get(self, request):
+        qs = User.objects.filter(groups__name='Supplier').order_by('id')
+        search = request.query_params.get('search', '')
+        if search:
+            qs = qs.filter(
+                Q(username__icontains=search) |
+                Q(first_name__icontains=search) |
+                Q(last_name__icontains=search) |
+                Q(email__icontains=search)
+            )
+        return Response(ProveedorSerializer(qs, many=True).data)
+
+    def post(self, request):
+        serializer = UsuarioCreateSerializer(data={**request.data, 'rol': 'Supplier'})
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        return Response(ProveedorSerializer(user).data, status=status.HTTP_201_CREATED)
+
+
+class ProveedorDetailView(APIView):
+    """
+    GET   /api/proveedores/{pk}/ — supplier detail
+    PATCH /api/proveedores/{pk}/ — update supplier
+    DELETE /api/proveedores/{pk}/ — delete supplier
+    """
+    permission_classes = [IsAuthenticated, IsPurchasesUser]
+
+    def _get_supplier(self, pk):
+        return get_object_or_404(User, pk=pk, groups__name='Supplier')
+
+    def get(self, request, pk):
+        return Response(ProveedorSerializer(self._get_supplier(pk)).data)
+
+    def patch(self, request, pk):
+        user = self._get_supplier(pk)
+        for field in ('email', 'first_name', 'last_name', 'username'):
+            if field in request.data:
+                setattr(user, field, request.data[field])
+        if 'is_active' in request.data:
+            val = request.data['is_active']
+            user.is_active = val if isinstance(val, bool) else str(val).lower() in ('true', '1')
+        if 'password' in request.data and request.data['password']:
+            user.set_password(request.data['password'])
+        user.save()
+        return Response(ProveedorSerializer(user).data)
+
+    def delete(self, request, pk):
+        self._get_supplier(pk).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ── Files ─────────────────────────────────────────────────────────────────────
 
 class ArchivoViewSet(viewsets.ModelViewSet):
     queryset = Archivo.objects.all()
     serializer_class = ArchivoSerializer
 
-class ListarUsuariosView(ListAPIView):
-    queryset = User.objects.all().order_by('id')
-    serializer_class = UsuarioReadSerializer
-    permission_classes = [IsAuthenticated, IsSuperAdmin]
 
-class CrearUsuarioView(CreateAPIView):
-    queryset = User.objects.all()
-    serializer_class = UsuarioCreateSerializer
-    # Reutilizamos la misma clase de Custom Permission (IsSuperAdmin) y exigimos autenticación
-    permission_classes = [IsAuthenticated, IsSuperAdmin]
+class DescargarArchivoSeguroView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        archivo_obj = get_object_or_404(Archivo, pk=pk)
+        if not archivo_obj.archivo:
+            raise Http404("El archivo no tiene una ruta fisica asociada.")
+        file_path = archivo_obj.archivo.path
+        if not os.path.exists(file_path):
+            raise Http404("El archivo no se encuentra en el servidor.")
+        response = FileResponse(open(file_path, 'rb'))
+        response['Content-Disposition'] = f'attachment; filename="{archivo_obj.nombre}"'
+        return response
 
 
+class RFQDocumentListView(APIView):
+    """
+    GET  /api/rfqs/{pk}/documentos/ — list documents attached to an RFQ
+    POST /api/rfqs/{pk}/documentos/ — upload a new document for an RFQ
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        rfq = get_object_or_404(RFQ_Base, pk=pk)
+        archivos = Archivo.objects.filter(id_rfq=rfq)
+        return Response([
+            {
+                'id': a.id,
+                'name': a.nombre,
+                'date': str(a.fecha_subida)[:10] if a.fecha_subida else None,
+                'type': a.file_type,
+                'is3D': a.is3d,
+            }
+            for a in archivos
+        ])
+
+    def post(self, request, pk):
+        rfq = get_object_or_404(RFQ_Base, pk=pk)
+        archivo_file = request.FILES.get('file')
+        if not archivo_file:
+            return Response({"error": "Se requiere el campo 'file'."}, status=status.HTTP_400_BAD_REQUEST)
+        ftype = request.data.get('type', '')
+        archivo_obj = Archivo.objects.create(
+            nombre=archivo_file.name,
+            archivo=archivo_file,
+            id_rfq=rfq,
+            file_type=ftype,
+            is3d=(ftype == '3d'),
+        )
+        return Response({
+            'id': archivo_obj.id,
+            'name': archivo_obj.nombre,
+            'date': str(archivo_obj.fecha_subida)[:10] if archivo_obj.fecha_subida else None,
+            'type': archivo_obj.file_type,
+            'is3D': archivo_obj.is3d,
+        }, status=status.HTTP_201_CREATED)
+
+
+class RFQDocumentDownloadView(APIView):
+    """GET /api/rfqs/{pk}/documentos/{doc_pk}/download/"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk, doc_pk):
+        rfq = get_object_or_404(RFQ_Base, pk=pk)
+        archivo_obj = get_object_or_404(Archivo, pk=doc_pk, id_rfq=rfq)
+        if not archivo_obj.archivo:
+            raise Http404("El archivo no tiene una ruta fisica asociada.")
+        file_path = archivo_obj.archivo.path
+        if not os.path.exists(file_path):
+            raise Http404("El archivo no se encuentra en el servidor.")
+        response = FileResponse(open(file_path, 'rb'))
+        response['Content-Disposition'] = f'attachment; filename="{archivo_obj.nombre}"'
+        return response
+
+
+# ── Notifications ─────────────────────────────────────────────────────────────
+
+class NotificacionListView(APIView):
+    """
+    GET    /api/notificaciones/ — list notifications for authenticated user
+    PATCH  /api/notificaciones/ — mark all as read  { "read_all": true }
+    DELETE /api/notificaciones/ — clear all
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        qs = Notificacion.objects.filter(usuario=request.user)
+        return Response({'notifications': NotificacionSerializer(qs, many=True).data})
+
+    def patch(self, request):
+        if request.data.get('read_all'):
+            Notificacion.objects.filter(usuario=request.user).update(leida=True)
+            return Response({"mensaje": "Todas las notificaciones marcadas como leidas."})
+        return Response({"error": "Envia { \"read_all\": true }."}, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request):
+        Notificacion.objects.filter(usuario=request.user).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class NotificacionDetailView(APIView):
+    """PATCH /api/notificaciones/{pk}/ — mark one notification as read."""
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, pk):
+        notif = get_object_or_404(Notificacion, pk=pk, usuario=request.user)
+        notif.leida = request.data.get('read', True)
+        notif.save(update_fields=['leida'])
+        return Response(NotificacionSerializer(notif).data)
+
+
+class NotificacionBulkView(APIView):
+    """Legacy — kept for backwards compatibility with /api/notificaciones/bulk/"""
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request):
+        Notificacion.objects.filter(usuario=request.user).update(leida=True)
+        return Response({"mensaje": "Todas las notificaciones marcadas como leidas."})
+
+    def delete(self, request):
+        Notificacion.objects.filter(usuario=request.user).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ── RFQ — Core ────────────────────────────────────────────────────────────────
+
+_MOLD_COMPLETION_FIELDS = ['DESC', 'CUST', 'No_CAV', 'PPY', 'TT', 'ELAB', 'Smach', 'DTQ']
+_DIE_COMPLETION_FIELDS  = ['DESC', 'CUST', 'Press', 'No_cavities', 'PPY', 'PT_No', 'DTQB']
+
+
+def _calc_completion(detalles: dict, rfq_type: str) -> int:
+    fields = _MOLD_COMPLETION_FIELDS if rfq_type == 'mold' else _DIE_COMPLETION_FIELDS
+    if not fields:
+        return 0
+    filled = sum(1 for f in fields if detalles.get(f) not in (None, '', 0, False))
+    return round(filled / len(fields) * 100)
+
+
+def _inject_detalles(item):
+    """Inject technical detail + completion percentage into a serialized RFQ item dict."""
+    rfq_id = item.get('id_rfq')
+    rfq_type = item.get('type')
+    if rfq_type == 'mold':
+        item['detalles_tecnicos'] = MOLD_INFO_P1_I.objects.filter(id_rfq_id=rfq_id).values().first() or {}
+    elif rfq_type == 'die':
+        item['detalles_tecnicos'] = DIE_TRIM_I.objects.filter(id_rfq_id=rfq_id).values().first() or {}
+    else:
+        item['detalles_tecnicos'] = {}
+
+    item['completion_percentage'] = _calc_completion(item['detalles_tecnicos'], rfq_type or '')
+
+    # Offers count (number of submitted quotes)
+    if rfq_type == 'mold':
+        item['offers_count'] = MOLD_COSTBR_P1_S.objects.filter(id_rfq_id=rfq_id).exclude(Elaborated_by='').count()
+    elif rfq_type == 'die':
+        item['offers_count'] = DIE_COSTBR_P1_S.objects.filter(id_rfq_id=rfq_id).exclude(Elaborated_by='').count()
+    else:
+        item['offers_count'] = 0
+
+
+class RFQProgresoView(APIView):
+    """GET /api/rfqs/{pk}/progreso/ — completion percentage for draft RFQs."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        rfq = get_object_or_404(RFQ_Base, pk=pk)
+        if rfq.type == 'mold':
+            detalles = MOLD_INFO_P1_I.objects.filter(id_rfq=rfq).values().first() or {}
+        else:
+            detalles = DIE_TRIM_I.objects.filter(id_rfq=rfq).values().first() or {}
+
+        fields = _MOLD_COMPLETION_FIELDS if rfq.type == 'mold' else _DIE_COMPLETION_FIELDS
+        filled = [f for f in fields if detalles.get(f) not in (None, '', 0, False)]
+        total = len(fields)
+        percentage = round(len(filled) / total * 100) if total else 0
+
+        return Response({
+            'percentage': percentage,
+            'filled': len(filled),
+            'total': total,
+            'filled_fields': filled,
+            'missing_fields': [f for f in fields if f not in filled],
+        })
+
+
+class RFQDetailView(APIView):
+    """
+    GET /api/rfqs/{pk}/ — full RFQ detail with stage1, stage2, stage3.
+    stage2 (supplier assignments) is hidden from Supplier-role users.
+    stage3 (quotes) is only populated from waiting_for_suppliers onwards.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        rfq = get_object_or_404(RFQ_Base, pk=pk)
+        grupos = list(request.user.groups.values_list('name', flat=True))
+
+        # Stage 1 — Technical specifications
+        if rfq.type == 'mold':
+            stage1 = {
+                'p1': MOLD_INFO_P1_I.objects.filter(id_rfq=rfq).values().first() or {},
+                'p2': MOLD_INFO_P2_I.objects.filter(id_rfq=rfq).values().first() or {},
+            }
+        else:
+            stage1 = {
+                'die_trim': DIE_TRIM_I.objects.filter(id_rfq=rfq).values().first() or {},
+            }
+
+        # Stage 2 — Supplier assignments (hidden from Supplier role)
+        stage2 = None
+        if 'Supplier' not in grupos:
+            assignments = RFQ_Assignment.objects.filter(id_rfq=rfq).select_related('supplier')
+            stage2 = {
+                'suppliers': [
+                    {
+                        'id': a.supplier.id,
+                        'username': a.supplier.username,
+                        'email': a.supplier.email,
+                        'is_winner': a.is_winner,
+                        'has_responded': a.has_responded,
+                    }
+                    for a in assignments if a.supplier
+                ],
+            }
+
+        # Stage 3 — Quote responses.
+        # Suppliers: visible from sent_to_suppliers onwards (so they can submit their quote).
+        # Internal users: visible from waiting_for_suppliers onwards (when responses exist).
+        stage3 = None
+        is_supplier_role = 'Supplier' in grupos
+        internal_stages = [STATUS.WAITING_FOR_SUPPLIERS, STATUS.SUPPLIER_SELECTED, STATUS.RFQ_CLOSED]
+        supplier_stages = STATUS.SUPPLIER_ACTIVE + [STATUS.SUPPLIER_SELECTED, STATUS.RFQ_CLOSED]
+
+        if (is_supplier_role and rfq.status in supplier_stages) or \
+           (not is_supplier_role and rfq.status in internal_stages):
+
+            if is_supplier_role:
+                # Return only this supplier's own draft/submitted response
+                username = request.user.username
+                if rfq.type == 'mold':
+                    own_p1 = MOLD_COSTBR_P1_S.objects.filter(id_rfq=rfq, Elaborated_by=username).values().first()
+                    responses = [{
+                        'supplier': username,
+                        'p1': own_p1 or {},
+                        'p2': MOLD_COSTBR_P2_S.objects.filter(id_rfq=rfq, Elaborated_by=username).values().first() or {},
+                        'p3': MOLD_COSTBR_P3_S.objects.filter(id_rfq=rfq, Elaborated_by=username).values().first() or {},
+                        'p4': MOLD_COSTBR_P4_S.objects.filter(id_rfq=rfq, Elaborated_by=username).values().first() or {},
+                        'p5': MOLD_COSTBR_P5_S.objects.filter(id_rfq=rfq, Elaborated_by=username).values().first() or {},
+                        'cav1': MOLD_CAVITIES_P1_S.objects.filter(id_rfq=rfq, supplier__username=username).values().first() or {},
+                        'cav2': MOLD_CAVITIES_P2_S.objects.filter(id_rfq=rfq, supplier__username=username).values().first() or {},
+                        'cav3': MOLD_CAVITIES_P3_S.objects.filter(id_rfq=rfq, supplier__username=username).values().first() or {},
+                        'info1': MOLD_INFO_P1_S.objects.filter(id_rfq=rfq, supplier__username=username).values().first() or {},
+                        'info2': MOLD_INFO_P2_S.objects.filter(id_rfq=rfq, supplier__username=username).values().first() or {},
+                    }] if own_p1 else []
+                else:
+                    own_p1 = DIE_COSTBR_P1_S.objects.filter(id_rfq=rfq, Elaborated_by=username).values().first()
+                    responses = [{
+                        'supplier': username,
+                        'p1': own_p1 or {},
+                        'p2': DIE_COSTBR_P2_S.objects.filter(id_rfq=rfq, supplier__username=username).values().first() or {},
+                        'p3': DIE_COSTBR_P3_S.objects.filter(id_rfq=rfq, supplier__username=username).values().first() or {},
+                        'p4': DIE_COSTBR_P4_S.objects.filter(id_rfq=rfq, supplier__username=username).values().first() or {},
+                        'info1': DIE_TRIM_S.objects.filter(id_rfq=rfq, supplier__username=username).values().first() or {},
+                    }] if own_p1 else []
+            else:
+                # Internal users see all supplier responses
+                if rfq.type == 'mold':
+                    usernames = list(MOLD_COSTBR_P1_S.objects.filter(id_rfq=rfq).exclude(Elaborated_by='').values_list('Elaborated_by', flat=True))
+                    responses = [
+                        {
+                            'supplier': u,
+                            'p1': MOLD_COSTBR_P1_S.objects.filter(id_rfq=rfq, Elaborated_by=u).values().first() or {},
+                            'p2': MOLD_COSTBR_P2_S.objects.filter(id_rfq=rfq, Elaborated_by=u).values().first() or {},
+                            'p3': MOLD_COSTBR_P3_S.objects.filter(id_rfq=rfq, Elaborated_by=u).values().first() or {},
+                            'p4': MOLD_COSTBR_P4_S.objects.filter(id_rfq=rfq, Elaborated_by=u).values().first() or {},
+                            'p5': MOLD_COSTBR_P5_S.objects.filter(id_rfq=rfq, Elaborated_by=u).values().first() or {},
+                            'cav1': MOLD_CAVITIES_P1_S.objects.filter(id_rfq=rfq, supplier__username=u).values().first() or {},
+                            'cav2': MOLD_CAVITIES_P2_S.objects.filter(id_rfq=rfq, supplier__username=u).values().first() or {},
+                            'cav3': MOLD_CAVITIES_P3_S.objects.filter(id_rfq=rfq, supplier__username=u).values().first() or {},
+                            'info1': MOLD_INFO_P1_S.objects.filter(id_rfq=rfq, supplier__username=u).values().first() or {},
+                            'info2': MOLD_INFO_P2_S.objects.filter(id_rfq=rfq, supplier__username=u).values().first() or {},
+                        }
+                        for u in usernames
+                    ]
+                else:
+                    usernames = list(DIE_COSTBR_P1_S.objects.filter(id_rfq=rfq).exclude(Elaborated_by='').values_list('Elaborated_by', flat=True))
+                    responses = [
+                        {
+                            'supplier': u,
+                            'p1': DIE_COSTBR_P1_S.objects.filter(id_rfq=rfq, Elaborated_by=u).values().first() or {},
+                            'p2': DIE_COSTBR_P2_S.objects.filter(id_rfq=rfq, supplier__username=u).values().first() or {},
+                            'p3': DIE_COSTBR_P3_S.objects.filter(id_rfq=rfq, supplier__username=u).values().first() or {},
+                            'p4': DIE_COSTBR_P4_S.objects.filter(id_rfq=rfq, supplier__username=u).values().first() or {},
+                            'info1': DIE_TRIM_S.objects.filter(id_rfq=rfq, supplier__username=u).values().first() or {},
+                        }
+                        for u in usernames
+                    ]
+
+            stage3 = {
+                'responses': responses,
+                'statistics': {
+                    'responsesReceived': RFQ_Assignment.objects.filter(id_rfq=rfq, has_responded=True).count(),
+                    'totalInvited': RFQ_Assignment.objects.filter(id_rfq=rfq).count(),
+                },
+            }
+
+        # Inject is_winner for Supplier role
+        # Inject is_winner for Supplier role
+        if 'Supplier' in grupos and rfq.status in [STATUS.SUPPLIER_SELECTED, STATUS.RFQ_CLOSED]:
+            assignment = RFQ_Assignment.objects.filter(id_rfq=rfq, supplier=request.user).first()
+            is_winner = assignment.is_winner if assignment else False
+        else:
+            is_winner = None
+
+        documentos = [
+            {
+                'id': a.id,
+                'name': a.nombre,
+                'date': str(a.fecha_subida)[:10] if a.fecha_subida else None,
+                'type': a.file_type,
+                'is3D': a.is3d,
+                'uploadedBy': rfq.created_by,
+            }
+            for a in Archivo.objects.filter(id_rfq=rfq)
+        ]
+
+        documentos = [
+            {
+                'id': a.id,
+                'name': a.nombre,
+                'date': str(a.fecha_subida)[:10] if a.fecha_subida else None,
+                'type': a.file_type,
+                'is3D': a.is3d,
+                'uploadedBy': rfq.created_by,
+            }
+            for a in Archivo.objects.filter(id_rfq=rfq)
+        ]
+
+        return Response({
+            'id_rfq': rfq.id_rfq,
+            'title':  rfq.tool,
+            'tool':   rfq.tool,
+            'type':   rfq.type,
+            'category':   rfq.category,
+            'priority':   rfq.priority,
+            'status':     rfq.status,
+            'submitted_for_review': rfq.submitted_for_review,
+            'created_by':   rfq.created_by,
+            'modified_date': rfq.modified_date,
+            'response_deadline':    rfq.response_deadline,
+            'shipping_terms':       rfq.shipping_terms,
+            'quality_requirements': rfq.quality_requirements,
+            'ia_predictions': rfq.ia_predictions,
+            'is_winner':    is_winner,
+            'documentos':   documentos,
+            'stage1': stage1,
+            'stage2': stage2,
+            'stage3': stage3,
+        })
+
+
+class RFQClasificadoListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        grupos = list(user.groups.values_list('name', flat=True))
+        tipo_vista = request.query_params.get('vista', 'all').lower()
+
+        VALID_VISTAS = ['all', 'draft', 'not_answered']
+        if tipo_vista not in VALID_VISTAS:
+            return Response(
+                {"error": f"Parametro 'vista' invalido. Use: {', '.join(VALID_VISTAS)}."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        queryset = RFQ_Base.objects.none()
+        is_ind_admin = 'Industrialization_Admin' in grupos or 'SuperAdmin' in grupos
+        is_ind_user  = 'Industrialization' in grupos
+
+        if is_ind_admin or is_ind_user:
+            if tipo_vista == 'all':
+                queryset = RFQ_Base.objects.filter(status__in=STATUS.PAST_IND)
+            elif tipo_vista == 'not_answered' and is_ind_admin:
+                queryset = RFQ_Base.objects.filter(status=STATUS.IND_DRAFT, submitted_for_review=True)
+            elif tipo_vista == 'draft':
+                if is_ind_admin:
+                    queryset = RFQ_Base.objects.filter(status=STATUS.IND_DRAFT, submitted_for_review=False)
+                else:
+                    queryset = RFQ_Base.objects.filter(status=STATUS.IND_DRAFT)
+
+        elif 'Purchases' in grupos or 'Purchases_Admin' in grupos:
+            is_purchases_admin = 'Purchases_Admin' in grupos
+            
+            if tipo_vista == 'all':
+                queryset = RFQ_Base.objects.filter(status__in=STATUS.PURCHASES_ALL)
+            
+            elif tipo_vista == 'not_answered':
+                if is_purchases_admin:
+                    # El Administrador ve:
+                    # 1. Lo nuevo recién llegado de Industrialización ('sent_to_purchases')
+                    # 2. Lo que el comprador ya armó y mandó a revisión ('purchases_draft' + submitted)
+                    # 3. Lo que ya tiene terna seleccionada y requiere fallo final ('supplier_selected')
+                    queryset = RFQ_Base.objects.filter(
+                        Q(status__iexact='sent_to_purchases') | 
+                        Q(status__iexact='purchases_draft', submitted_for_review=True) |
+                        Q(status__iexact='supplier_selected')
+                    )
+                else:
+                    # El Comprador normal ve:
+                    # 1. Lo nuevo que le asignó Industrialización ('sent_to_purchases')
+                    # 2. Lo que regresó de los proveedores y está listo para análisis ('waiting_for_suppliers')
+                    queryset = RFQ_Base.objects.filter(
+                        Q(status__iexact='sent_to_purchases') |
+                        Q(status__iexact='waiting_for_suppliers')
+                    )
+            
+            elif tipo_vista == 'draft':
+                # Se unifica el comportamiento para Admin y Usuario normal:
+                # Ambos ven únicamente los borradores puros que aún NO han sido enviados a firma.
+                queryset = RFQ_Base.objects.filter(
+                    status__iexact='purchases_draft', 
+                    submitted_for_review=False
+                )
+        elif 'Supplier' in grupos:
+            # 1. Obtenemos los RFQs asignados a este proveedor
+            assignments = RFQ_Assignment.objects.filter(supplier=user)
+            asignados_ids = assignments.values_list('id_rfq_id', flat=True)
+            
+            # 2. Identificamos si el proveedor actual YA INICIÓ un borrador.
+            # Buscamos en las tablas de costos P1 si ya hay un registro con su username.
+            mold_drafts = MOLD_COSTBR_P1_S.objects.filter(Elaborated_by=user.username).values_list('id_rfq_id', flat=True)
+            die_drafts = DIE_COSTBR_P1_S.objects.filter(Elaborated_by=user.username).values_list('id_rfq_id', flat=True)
+            mis_borradores_ids = list(mold_drafts) + list(die_drafts)
+            
+            if tipo_vista == 'not_answered':
+                # INBOX: Los RFQs que le asignaron, que NO ha respondido, y que NO ha empezado a cotizar
+                queryset = RFQ_Base.objects.filter(
+                    id_rfq__in=asignados_ids,
+                    assignments__supplier=user,
+                    assignments__has_responded=False
+                ).exclude(id_rfq__in=mis_borradores_ids)
+                
+            elif tipo_vista == 'draft':
+                # BORRADORES: Los RFQs que NO ha respondido oficialmente, pero que SÍ tienen datos guardados
+                queryset = RFQ_Base.objects.filter(
+                    id_rfq__in=mis_borradores_ids,
+                    assignments__supplier=user,
+                    assignments__has_responded=False
+                )
+                
+            else: # 'all'
+                queryset = RFQ_Base.objects.filter(id_rfq__in=asignados_ids)
+        serializer = RFQBaseSerializer(queryset, many=True)
+        data = list(serializer.data)
+        for item in data:
+            _inject_detalles(item)
+            if 'Supplier' in grupos:
+                assignment = RFQ_Assignment.objects.filter(id_rfq_id=item['id_rfq'], supplier=user).first()
+                if assignment:
+                    item['is_winner'] = assignment.is_winner
+                    item['has_responded'] = assignment.has_responded
+                    item['supplier_status'] = "Waiting for response" if assignment.has_responded else "Pending"
+                    if assignment.is_winner:
+                        item['supplier_status'] = "You were the winner for this RFQ"
+                    elif assignment.has_responded:
+                        item['supplier_status'] = "Waiting for response"
+                    else:
+                        item['supplier_status'] = "You have been assigned this RFQ"
+        return Response(data)
+# ── RFQ — Industrialization ───────────────────────────────────────────────────
 
 class CrearRFQView(APIView):
     permission_classes = [IsAuthenticated, IsIndUser]
@@ -611,58 +846,53 @@ class CrearRFQView(APIView):
     def post(self, request):
         data = request.data
         is_draft = data.get('is_draft', True)
-        rfq_type = data.get('type') 
-        
-        if not is_draft:
-            if not data.get('tool') or not rfq_type:
-                return Response(
-                    {"error": "Los campos 'tool' y 'type' son obligatorios para el envío definitivo."}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+        rfq_type = data.get('type')
+
+        if not is_draft and (not data.get('tool') or not rfq_type):
+            return Response(
+                {"error": "Los campos 'tool' y 'type' son obligatorios para el envio definitivo."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         try:
             rfq_base = RFQ_Base.objects.create(
                 created_by=request.user.username,
                 tool=data.get('tool', ''),
-                type=rfq_type
-            )
-
-            # Corrección de la máquina de estados
-            Status_RFQ.objects.create(
-                id_rfq=rfq_base.id_rfq,
-                lev1=True, 
-                lev2=is_draft,        # True si es borrador
-                lev3=not is_draft     # True si se envía definitivo
+                type=rfq_type,
+                category=data.get('category', ''),
+                priority=data.get('priority', ''),
+                status=STATUS.IND_DRAFT,
+                submitted_for_review=not is_draft,
             )
 
             if rfq_type == 'mold':
                 mold_p1_data = data.get('mold_info_p1', {})
                 if mold_p1_data:
                     MOLD_INFO_P1_I.objects.create(id_rfq=rfq_base, **mold_p1_data)
-
                 mold_p2_data = data.get('mold_info_p2', {})
                 if mold_p2_data:
                     MOLD_INFO_P2_I.objects.create(id_rfq=rfq_base, **mold_p2_data)
-
             elif rfq_type == 'die':
                 die_trim_data = data.get('die_trim', {})
                 if die_trim_data:
                     DIE_TRIM_I.objects.create(id_rfq=rfq_base, **die_trim_data)
             else:
-                raise ValueError("El tipo de RFQ es inválido. Debe ser 'mold' o 'die'.")
+                raise ValueError("El tipo de RFQ es invalido. Debe ser 'mold' o 'die'.")
 
-            estado_msg = "DRAFT_IND (Nivel 2)" if is_draft else "PENDING_IND_APPROVAL (Nivel 3)"
-            
-            return Response({
-                "mensaje": f"RFQ {rfq_base.id_rfq} guardado exitosamente como {estado_msg}.",
-                "id_rfq": rfq_base.id_rfq
-            }, status=status.HTTP_201_CREATED)
+            if not is_draft:
+                registrar_tracking_rfq(rfq_base, STATUS.IND_DRAFT, request.user)
 
-        except TypeError as e:
-            return Response({"error": f"Error de estructura en los datos: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
+            estado_msg = "DRAFT" if is_draft else "PENDING_IND_REVIEW"
+            return Response(
+                {"mensaje": f"RFQ {rfq_base.id_rfq} guardado como {estado_msg}.", "id_rfq": rfq_base.id_rfq},
+                status=status.HTTP_201_CREATED,
+            )
+
+        except (TypeError, ValueError) as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        
+
 
 class EditarRFQView(APIView):
     permission_classes = [IsAuthenticated, IsIndUser]
@@ -670,150 +900,343 @@ class EditarRFQView(APIView):
     @transaction.atomic
     def put(self, request, pk):
         rfq_base = get_object_or_404(RFQ_Base, pk=pk)
-        status_rfq = get_object_or_404(Status_RFQ, id_rfq=rfq_base.id_rfq)
 
-        if status_rfq.lev6:
+        locked_statuses = [
+            STATUS.SENT_TO_SUPPLIERS, STATUS.WAITING_FOR_SUPPLIERS,
+            STATUS.SUPPLIER_SELECTED, STATUS.RFQ_CLOSED,
+        ]
+        if rfq_base.status in locked_statuses:
             return Response(
-                {"error": "Edición bloqueada. El RFQ ya fue enviado a los proveedores."}, 
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Edicion bloqueada. El RFQ ya fue enviado a los proveedores."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         data = request.data
         is_draft = data.get('is_draft', True)
 
         try:
-            if 'tool' in data:
-                rfq_base.tool = data['tool']
-            if 'type' in data:
-                rfq_base.type = data['type']
+            for field in ('tool', 'type', 'category', 'priority'):
+                if field in data:
+                    setattr(rfq_base, field, data[field])
+            rfq_base.status = STATUS.IND_DRAFT
+            rfq_base.submitted_for_review = not is_draft
             rfq_base.save()
-            nivel_alcanzado = None # 1. Inicializamos
-            # Máquina de estados consistente
-            if is_draft:
-                status_rfq.lev2 = True
-                status_rfq.lev3 = False
-                status_rfq.lev4 = False
-            else:
-                status_rfq.lev2 = False
-                status_rfq.lev3 = True
-                status_rfq.lev4 = False
-                nivel_alcanzado = 'lev3' # Solo trackeamos el envío definitivo
-                
-            status_rfq.save()
-            if nivel_alcanzado: # 3. Inyección condicionada
-                registrar_tracking_rfq(rfq_base, nivel_alcanzado, request.user)
-            # Uso de update_or_create para manejar guardados parciales sin perder referencias
+
+            if not is_draft:
+                registrar_tracking_rfq(rfq_base, STATUS.IND_DRAFT, request.user)
+
             rfq_type = rfq_base.type
             if rfq_type == 'mold':
                 mold_p1_data = data.get('mold_info_p1', {})
                 if mold_p1_data:
                     MOLD_INFO_P1_I.objects.update_or_create(id_rfq=rfq_base, defaults=mold_p1_data)
-
                 mold_p2_data = data.get('mold_info_p2', {})
                 if mold_p2_data:
                     MOLD_INFO_P2_I.objects.update_or_create(id_rfq=rfq_base, defaults=mold_p2_data)
-
             elif rfq_type == 'die':
                 die_trim_data = data.get('die_trim', {})
                 if die_trim_data:
                     DIE_TRIM_I.objects.update_or_create(id_rfq=rfq_base, defaults=die_trim_data)
 
-            estado_msg = "Borrador (Nivel 2)" if is_draft else "Pendiente Aprobación (Nivel 3)"
+            estado_msg = "Borrador" if is_draft else "Enviado al admin para revision"
+            return Response({"mensaje": f"RFQ {rfq_base.id_rfq} actualizado. Estado: {estado_msg}.", "id_rfq": rfq_base.id_rfq})
 
-            return Response({
-                "mensaje": f"RFQ {rfq_base.id_rfq} actualizado correctamente. Estado actual: {estado_msg}.",
-                "id_rfq": rfq_base.id_rfq
-            }, status=status.HTTP_200_OK)
-
-        except TypeError as e:
-            return Response({"error": f"Error de estructura en los datos: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
+        except (TypeError, ValueError) as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        
-class CotizacionProveedorView(APIView):
+
+
+class GuardarEspecificacionesView(APIView):
     """
-    Endpoint para que el proveedor envíe su cotización técnica y económica.
-    (Soporta 'mold' y 'die')
+    PATCH /api/rfqs/{pk}/especificaciones/
+    Update technical spec tables without touching RFQ_Base.status.
+    Blocked once sent_to_suppliers or beyond.
     """
-    permission_classes = [IsAuthenticated,IsSupplier]
+    permission_classes = [IsAuthenticated, IsIndUser]
 
     @transaction.atomic
-    def post(self, request, pk):
-        rfq_base = get_object_or_404(RFQ_Base, pk=pk)
-        status_rfq, created = Status_RFQ.objects.get_or_create(id_rfq=rfq_base.id_rfq)
+    def patch(self, request, pk):
+        rfq = get_object_or_404(RFQ_Base, pk=pk)
 
-        if not status_rfq.lev6:
+        locked = [STATUS.SENT_TO_SUPPLIERS, STATUS.WAITING_FOR_SUPPLIERS,
+                  STATUS.SUPPLIER_SELECTED, STATUS.RFQ_CLOSED]
+        if rfq.status in locked:
             return Response(
-                {"error": "El RFQ no está habilitado para recibir cotizaciones o ya fue procesado."},
-                 status=status.HTTP_400_BAD_REQUEST
+                {"error": "El RFQ ya fue publicado y sus especificaciones no pueden modificarse."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-        data = request.data
-        is_draft = data.get('is_draft', True)
-        proveedor_identificador = request.user.username 
-
         try:
-            if rfq_base.type == 'mold':
-                bloques = [
-                    ('mold_cost_p1', MOLD_COSTBR_P1_S), ('mold_cost_p2', MOLD_COSTBR_P2_S),
-                    ('mold_cost_p3', MOLD_COSTBR_P3_S), ('mold_cost_p4', MOLD_COSTBR_P4_S),
-                    ('mold_cost_p5', MOLD_COSTBR_P5_S)
-                ]
-                for key, model in bloques:
-                    cost_data = data.get(key, {})
-                    if cost_data:
-                        cost_data['Elaborated_by'] = proveedor_identificador
-                        model.objects.update_or_create(
-                            id_rfq=rfq_base, Elaborated_by=proveedor_identificador, defaults=cost_data
-                        )
-
-            elif rfq_base.type == 'die':
-                bloques_die = [
-                    ('die_cost_p1', DIE_COSTBR_P1_S), ('die_cost_p2', DIE_COSTBR_P2_S),
-                    ('die_cost_p3', DIE_COSTBR_P3_S), ('die_cost_p4', DIE_COSTBR_P4_S)
-                ]
-                for key, model in bloques_die:
-                    cost_data = data.get(key, {})
-                    if cost_data:
-                        cost_data['Elaborated_by'] = proveedor_identificador
-                        model.objects.update_or_create(
-                            id_rfq=rfq_base, Elaborated_by=proveedor_identificador, defaults=cost_data
-                        )
-
-            if is_draft:
-                estado_msg = "Cotización guardada como borrador (Nivel 6)."
-            else:
-                status_rfq.lev6 = False
-                status_rfq.lev7 = True
-                status_rfq.save()
-
-                registrar_tracking_rfq(rfq_base, 'lev7', request.user)
-                self._notificar_entrega(rfq_base.id_rfq)
-                estado_msg = "Cotización enviada oficialmente para revisión (Nivel 7)."
-
-            return Response({"mensaje": estado_msg, "id_rfq": rfq_base.id_rfq}, status=status.HTTP_200_OK)
-
+            if rfq.type == 'mold':
+                p1 = request.data.get('mold_info_p1', {})
+                p2 = request.data.get('mold_info_p2', {})
+                if p1:
+                    MOLD_INFO_P1_I.objects.update_or_create(id_rfq=rfq, defaults=p1)
+                if p2:
+                    MOLD_INFO_P2_I.objects.update_or_create(id_rfq=rfq, defaults=p2)
+            elif rfq.type == 'die':
+                die = request.data.get('die_trim', {})
+                if die:
+                    DIE_TRIM_I.objects.update_or_create(id_rfq=rfq, defaults=die)
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-    def _notificar_entrega(self, id_rfq):
-        print(f"EVENTO: La cotización para el RFQ {id_rfq} ha sido entregada.")
+        return Response({"mensaje": "Especificaciones actualizadas.", "id_rfq": rfq.id_rfq})
+
+
+class GuardarMetadataComprasView(APIView):
+    """
+    PATCH /api/rfqs/{pk}/compras-metadata/
+    Save Purchases-specific metadata (deadline, terms, requirements) onto RFQ_Base.
+    Does not change status or submitted_for_review.
+    """
+    permission_classes = [IsAuthenticated, IsPurchasesUser]
+
+    def patch(self, request, pk):
+        rfq = get_object_or_404(RFQ_Base, pk=pk)
+
+        meta = request.data.get('metadata', request.data)
+        updated = []
+
+        if 'response_deadline' in meta:
+            rfq.response_deadline = meta['response_deadline'] or None
+            updated.append('response_deadline')
+        if 'shipping_terms' in meta:
+            rfq.shipping_terms = meta['shipping_terms']
+            updated.append('shipping_terms')
+        if 'quality_requirements' in meta:
+            rfq.quality_requirements = meta['quality_requirements']
+            updated.append('quality_requirements')
+
+        if updated:
+            rfq.save(update_fields=updated)
+
+        return Response({"mensaje": "Metadata actualizada.", "id_rfq": rfq.id_rfq})
+
+
+class ReviewRFQIndView(APIView):
+    permission_classes = [IsAuthenticated, IsIndAdmin]
+
+    @transaction.atomic
+    def patch(self, request, pk):
+        rfq_base = get_object_or_404(RFQ_Base, pk=pk)
+
+        if rfq_base.status != STATUS.IND_DRAFT or not rfq_base.submitted_for_review:
+            return Response(
+                {"error": "El RFQ no esta pendiente de revision (industrialization_draft + submitted_for_review=True requerido)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        is_approved = request.data.get('is_approved')
+        print(f">>> [DEBUG] ¿Se aprobó?: {is_approved}") # CHISMOSO 1
+        if is_approved is None:
+            return Response({"error": "Se requiere el campo 'is_approved' (booleano)."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if str(is_approved).lower() in ['true', '1', 't', 'y', 'yes']:
+            print(">>> [DEBUG] Entrando a la lógica de aprobación...") # CHISMOSO 2
+            if rfq_base.type == 'mold' and not MOLD_INFO_P1_I.objects.filter(id_rfq=rfq_base).exists():
+                return Response({"error": "No se puede aprobar: Faltan datos tecnicos del Molde (P1)."}, status=status.HTTP_400_BAD_REQUEST)
+            if rfq_base.type == 'die' and not DIE_TRIM_I.objects.filter(id_rfq=rfq_base).exists():
+                return Response({"error": "No se puede aprobar: Faltan datos tecnicos del Troquel."}, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                print(">>> [DEBUG] Inicializando funciones de conversión...") # CHISMOSO 3
+                def safe_int(val, default=0):
+                    try: return int(float(val))
+                    except (ValueError, TypeError): return default
+
+                def safe_float(val, default=0.0):
+                    try: return float(val)
+                    except (ValueError, TypeError): return default
+
+                payload_ia = {
+                    "die_casting_machine": 0, "part_lenght": 0, "part_height": 0, "part_depth": 0, "part_weight_kg": 0.0,
+                    "total_part_weight_kg": 0.0, "projected_area_per_part_cm2": 0, "total_projected_area_cm2": 0,
+                    "no_of_cavities": 1, "plates": 0, "sliders": 0, "subcores": 0, "squeezers": 0,
+                    "total_mechanisms": 0, "inserts": 0, "jet_coolers": 0,
+                    "product_type": "Structural", "comodity": "Powertrain", "country": "Mexico"
+                }
+
+                if rfq_base.type == 'mold':
+                    detalles = MOLD_INFO_P1_I.objects.filter(id_rfq=rfq_base).first()
+                    if detalles:
+                        payload_ia["die_casting_machine"] = safe_int(detalles.Smach)
+                        payload_ia["no_of_cavities"] = safe_int(detalles.No_CAV, 1)
+                        payload_ia["sliders"] = safe_int(detalles.No_ofHS) + safe_int(detalles.No_ofMS)
+                        payload_ia["subcores"] = safe_int(detalles.No_subc)
+                        payload_ia["squeezers"] = safe_int(detalles.Spin)
+                        payload_ia["plates"] = safe_int(detalles.No_PlJcosys)
+                        payload_ia["inserts"] = safe_int(detalles.Ihtcs)
+                        payload_ia["jet_coolers"] = safe_int(detalles.Jco)
+                        payload_ia["total_mechanisms"] = payload_ia["sliders"] + payload_ia["subcores"] + payload_ia["squeezers"]
+                        
+                        payload_ia["part_lenght"] = safe_float(detalles.part_length)
+                        payload_ia["part_height"] = safe_float(detalles.part_height)
+                        payload_ia["part_depth"] = safe_float(detalles.part_depth)
+                        payload_ia["part_weight_kg"] = safe_float(detalles.part_weight_kg)
+                        payload_ia["total_part_weight_kg"] = payload_ia["part_weight_kg"] * payload_ia["no_of_cavities"]
+                        payload_ia["product_type"] = detalles.product_type or "Structural"
+                        payload_ia["comodity"] = detalles.comodity or "Powertrain"
+                        payload_ia["country"] = detalles.country or "Mexico"
+
+                elif rfq_base.type == 'die':
+                    detalles = DIE_TRIM_I.objects.filter(id_rfq=rfq_base).first()
+                    if detalles:
+                        payload_ia["die_casting_machine"] = safe_int(detalles.Press)
+                        payload_ia["no_of_cavities"] = safe_int(detalles.No_cavities, 1)
+                        payload_ia["sliders"] = safe_int(detalles.No_hydra_slides)
+                        payload_ia["total_mechanisms"] = payload_ia["sliders"]
+                        payload_ia["projected_area_per_part_cm2"] = safe_float(detalles.PROJ_L)
+                        payload_ia["total_projected_area_cm2"] = payload_ia["projected_area_per_part_cm2"] * payload_ia["no_of_cavities"]
+                        
+                        payload_ia["part_lenght"] = safe_float(detalles.part_length)
+                        payload_ia["part_height"] = safe_float(detalles.part_height)
+                        payload_ia["part_depth"] = safe_float(detalles.part_depth)
+                        payload_ia["part_weight_kg"] = safe_float(detalles.part_weight_kg)
+                        payload_ia["total_part_weight_kg"] = payload_ia["part_weight_kg"] * payload_ia["no_of_cavities"]
+                        payload_ia["product_type"] = detalles.product_type or "Structural"
+                        payload_ia["comodity"] = detalles.comodity or "Powertrain"
+                        payload_ia["country"] = detalles.country or "Mexico"
+                print(">>> [DEBUG] Payload preparado para IA:", payload_ia) # CHISMOSO 4
+                # Llamada POST a tu modelo en AWS
+                ia_response = requests.post("http://ec2-54-226-35-6.compute-1.amazonaws.com:8000/predictions", json=payload_ia, timeout=15)
+                print(">>> [DEBUG] AWS Respondió con Status:", ia_response.status_code) # CHISMOSO 5
+                if ia_response.status_code == 200:
+                    rfq_base.ia_predictions = ia_response.json()
+                    print(">>> [DEBUG] ¡Éxito! Predicciones guardadas:", rfq_base.ia_predictions) # CHISMOSO 6
+                else:
+                    print("Error de IA HTTP:", ia_response.status_code)
+                    print(">>> [ERROR] La IA devolvió error:", ia_response.text)
+                    
+            except Exception as e:
+                # Si la IA falla (caída del servidor, timeout), no detenemos el flujo, 
+                # simplemente no guardamos predicciones y el RFQ avanza.
+                print("Error de red al consultar IA:", str(e))
+            rfq_base.status = STATUS.SENT_TO_PURCHASES
+            rfq_base.submitted_for_review = False
+            rfq_base.save()
+            registrar_tracking_rfq(rfq_base, STATUS.SENT_TO_PURCHASES, request.user)
+            estado_msg = "SENT_TO_PURCHASES"
+        else:
+            rfq_base.submitted_for_review = False
+            rfq_base.save()
+            registrar_tracking_rfq(rfq_base, STATUS.IND_DRAFT, request.user)
+            estado_msg = "IND_DRAFT (rechazado, regreso a edicion)"
+
+        return Response({
+            "mensaje": f"RFQ {rfq_base.id_rfq} ({rfq_base.type}) evaluado correctamente.",
+            "id_rfq": rfq_base.id_rfq,
+            "estado_actual": estado_msg,
+        })
+
+
+# ── RFQ — Purchases ───────────────────────────────────────────────────────────
+
+class AssignSuppliersRFQView(APIView):
+    permission_classes = [IsAuthenticated, IsPurchasesUser]
+
+    @transaction.atomic
+    def put(self, request, pk):
+        rfq = get_object_or_404(RFQ_Base, pk=pk)
+
+        if rfq.status not in (STATUS.SENT_TO_PURCHASES, STATUS.PURCHASES_DRAFT):
+            return Response(
+                {"error": "El RFQ no se encuentra en el inbox de Compras."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        proveedores_ids = request.data.get('proveedores_ids', [])
+        is_draft = bool(request.data.get('is_draft', False))
+
+        if not isinstance(proveedores_ids, list):
+            return Response({"error": "El campo 'proveedores_ids' debe ser una lista."}, status=status.HTTP_400_BAD_REQUEST)
+        if not is_draft and not proveedores_ids:
+            return Response({"error": "Debes proporcionar al menos un proveedor para enviar a revision."}, status=status.HTTP_400_BAD_REQUEST)
+
+        proveedores_validos = User.objects.none()
+        if proveedores_ids:
+            proveedores_validos = User.objects.filter(id__in=proveedores_ids, groups__name='Supplier', is_active=True)
+            if proveedores_validos.count() != len(proveedores_ids):
+                return Response({"error": "Uno o mas IDs no son validos o no pertenecen al grupo Supplier."}, status=status.HTTP_400_BAD_REQUEST)
+
+        RFQ_Assignment.objects.filter(id_rfq=rfq).delete()
+        if rfq.type == 'mold':
+            MOLD_COSTBR_I.objects.filter(id_rfq=rfq).delete()
+        elif rfq.type == 'die':
+            DIE_COSTBR_I.objects.filter(id_rfq=rfq).delete()
+
+        RFQ_Assignment.objects.bulk_create([
+            RFQ_Assignment(id_rfq=rfq, supplier=proveedor)
+            for proveedor in proveedores_validos
+        ])
+
+        if rfq.type == 'mold':
+            MOLD_COSTBR_I.objects.create(id_rfq=rfq)
+        elif rfq.type == 'die':
+            DIE_COSTBR_I.objects.create(id_rfq=rfq)
+
+        rfq.status = STATUS.PURCHASES_DRAFT
+        rfq.submitted_for_review = not is_draft
+        rfq.save()
+        registrar_tracking_rfq(rfq, STATUS.PURCHASES_DRAFT, request.user)
+
+        return Response({
+            "message": f"RFQ {rfq.id_rfq} guardado como {'borrador' if is_draft else 'enviado a revision'}.",
+            "cantidad_proveedores": proveedores_validos.count(),
+            "submitted_for_review": rfq.submitted_for_review,
+        })
+
+
+class RFQPendientesAprobacionComprasListView(generics.ListAPIView):
+    serializer_class = RFQBaseSerializer
+    permission_classes = [IsAuthenticated, IsPurchasesAdmin]
+
+    def get_queryset(self):
+        return RFQ_Base.objects.filter(status=STATUS.PURCHASES_DRAFT, submitted_for_review=True)
+
+
+class AprobarRechazarProveedoresView(APIView):
+    permission_classes = [IsAuthenticated, IsPurchasesAdmin]
+
+    @transaction.atomic
+    def patch(self, request, pk):
+        rfq_base = get_object_or_404(RFQ_Base, pk=pk)
+
+        if rfq_base.status != STATUS.PURCHASES_DRAFT or not rfq_base.submitted_for_review:
+            return Response(
+                {"error": "El RFQ no esta en espera de autorizacion de gerencia de compras."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        accion = request.data.get('accion', request.data.get('action', '')).lower()
+
+        if accion in ('aprobar', 'approve'):
+            rfq_base.status = STATUS.SENT_TO_SUPPLIERS
+            rfq_base.submitted_for_review = False
+            rfq_base.save()
+            registrar_tracking_rfq(rfq_base, STATUS.SENT_TO_SUPPLIERS, request.user)
+            mensaje = "Lista de proveedores aprobada. El RFQ ha sido publicado a los proveedores."
+        elif accion in ('rechazar', 'reject'):
+            rfq_base.submitted_for_review = False
+            rfq_base.save()
+            registrar_tracking_rfq(rfq_base, STATUS.PURCHASES_DRAFT, request.user)
+            mensaje = "Lista rechazada. El RFQ regreso a Compras para nueva seleccion."
+        else:
+            return Response({"error": "Accion invalida. Usa 'aprobar'/'approve' o 'rechazar'/'reject'."}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({"mensaje": mensaje, "id_rfq": rfq_base.id_rfq})
+
 
 class ComparativaCotizacionesView(APIView):
-    """
-    Historia 1: Análisis de Cotizaciones Recibidas.
-    Permite al comprador comparar todas las ofertas económicas de un RFQ.
-    """
     permission_classes = [IsAuthenticated, IsPurchasesUser]
 
     def get(self, request, pk):
         rfq = get_object_or_404(RFQ_Base, pk=pk)
-        status_rfq = get_object_or_404(Status_RFQ, id_rfq=rfq.id_rfq)
 
-        if not status_rfq.lev7:
+        if rfq.status != STATUS.WAITING_FOR_SUPPLIERS:
             return Response(
-                {"error": "El RFQ no está en fase de análisis (Nivel 7)."},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "El RFQ no esta en fase de analisis (waiting_for_suppliers)."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         if rfq.type == 'mold':
@@ -828,228 +1251,486 @@ class ComparativaCotizacionesView(APIView):
             user_obj = User.objects.filter(username=username).first()
             oferta = {
                 "proveedor": f"{user_obj.first_name} {user_obj.last_name}".strip() if user_obj else username,
-                "datos": {f"parte_{i+1}": m.objects.filter(id_rfq=rfq, Elaborated_by=username).values().first() 
-                          for i, m in enumerate(modelos)}
+                "datos": {
+                    f"parte_{i+1}": m.objects.filter(id_rfq=rfq, Elaborated_by=username).values().first()
+                    for i, m in enumerate(modelos)
+                },
             }
             resultado.append(oferta)
 
-        return Response({"id_rfq": rfq.id_rfq, "tipo": rfq.type, "comparativa": resultado}, status=status.HTTP_200_OK)
-        
-class BuzonProveedorListView(generics.ListAPIView):
-    """
-    BACK: Buzón de RFQS Asignadas para el Proveedor
-    Retorna exclusivamente los RFQs en estado PUBLISHED_TO_SUPPLIERS (lev6)
-    donde el request.user esté asignado.
-    """
-    # Asegúrate de tener RFQBaseSerializer importado
-    serializer_class = RFQBaseSerializer 
-    permission_classes = [IsAuthenticated, IsSupplier]
-
-    def get_queryset(self):
-        # Usamos el ID del usuario logueado (el proveedor que hace la petición)
-        proveedor_id = self.request.user.id
-
-        # 1. Encontrar los IDs de los RFQs donde este proveedor fue invitado
-        # Buscamos directamente en la tabla relacional RFQ_Assignment
-        asignaciones_ids = RFQ_Assignment.objects.filter(
-            supplier_id=proveedor_id
-        ).values_list('id_rfq', flat=True)
-
-        # 2. Validar estados: De esas asignaciones, filtrar SOLO las que estén en Nivel 6
-        rfqs_publicados_ids = Status_RFQ.objects.filter(
-            id_rfq__in=asignaciones_ids,
-            lev6=True
-        ).values_list('id_rfq', flat=True)
-
-        # 3. Retornar la consulta final con la información del RFQ_Base
-        return RFQ_Base.objects.filter(id_rfq__in=rfqs_publicados_ids)
-
-class AprobarRechazarProveedoresView(APIView):
-    """
-    Endpoint PATCH para que el SuperAdmin de Compras apruebe o rechace 
-    la lista de proveedores seleccionados para un RFQ.
-    Transiciona el estado de lev5 a lev6 (Aprobado) o regresa a lev4 (Rechazado).
-    """
-    permission_classes = [IsAuthenticated, IsPurchasesAdmin]
-
-    @transaction.atomic
-    def patch(self, request, pk):
-        rfq_base = get_object_or_404(RFQ_Base, pk=pk)
-        status_rfq = get_object_or_404(Status_RFQ, id_rfq=rfq_base.id_rfq)
-
-        if not status_rfq.lev5:
-            return Response(
-                {"error": "El RFQ no está en espera de autorización de gerencia de compras (Nivel 5)."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        accion = request.data.get('accion', '').lower()
-        nivel_alcanzado = None # 1. Inicializamos
+        return Response({"id_rfq": rfq.id_rfq, "tipo": rfq.type, "comparativa": resultado})
 
 
-        if accion == 'aprobar':
-            status_rfq.lev5 = False
-            status_rfq.lev6 = True
-            nivel_alcanzado = 'lev6' # 2. Registramos transición
-            mensaje = "Lista de proveedores aprobada. El RFQ ha sido publicado a los proveedores (Nivel 6)."
-        
-        elif accion == 'rechazar':
-            status_rfq.lev5 = False
-            status_rfq.lev4 = True
-            nivel_alcanzado = 'lev4' # 2. Registramos transición
-            mensaje = "Lista rechazada. El RFQ ha sido devuelto a los compradores para una nueva selección (Nivel 4)."
-        
-        else:
-            return Response(
-                {"error": "Acción inválida. Usa 'aprobar' o 'rechazar'."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        status_rfq.save()
-
-        if nivel_alcanzado: # 4. Inyección
-            registrar_tracking_rfq(rfq_base, nivel_alcanzado, request.user)
-
-        return Response({
-            "mensaje": mensaje,
-            "id_rfq": rfq_base.id_rfq
-        }, status=status.HTTP_200_OK)
-    
-class RFQPendientesAprobacionComprasListView(generics.ListAPIView):
-    """
-    Endpoint GET para que el SuperAdmin de Compras vea la lista 
-    de RFQs que están esperando su autorización de proveedores (Nivel 5).
-    """
-    serializer_class = RFQBaseSerializer
-    permission_classes = [IsAuthenticated, IsPurchasesAdmin]
-
-    def get_queryset(self):
-        # 1. Buscamos los IDs de los RFQ que están en Nivel 5
-        rfqs_pendientes_ids = Status_RFQ.objects.filter(lev5=True).values_list('id_rfq', flat=True)
-        
-        # 2. Retornamos la info base de esos RFQs
-        return RFQ_Base.objects.filter(id_rfq__in=rfqs_pendientes_ids)
-
-class ReviewRFQIndView(APIView):
-    """
-    Endpoint: Aprobación o Rechazo de RFQs por el SuperAdmin de Industrialización.
-    Soporta validación de integridad para tipos 'mold' y 'die'.
-    """
-    permission_classes = [IsAuthenticated]
-
-    @transaction.atomic
-    def patch(self, request, pk):
-        # 1. Validación de Permisos
-        grupos_usuario = request.user.groups.values_list('name', flat=True)
-        if 'Industrialization_Admin' not in grupos_usuario and 'SuperAdmin' not in grupos_usuario:
-            return Response(
-                {"error": "Acceso denegado. Se requiere rol de Administrador de Industrialización."},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
-        # 2. Obtener el RFQ y su estado
-        rfq_base = get_object_or_404(RFQ_Base, pk=pk)
-        status_rfq = get_object_or_404(Status_RFQ, id_rfq=rfq_base.id_rfq)
-
-        # 3. Validar fase actual (Nivel 3: Pendiente de revisión)
-        if not status_rfq.lev3:
-            return Response(
-                {"error": "El RFQ no está en estado pendiente de revisión (Nivel 3)."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        is_approved = request.data.get('is_approved')
-        
-        nivel_alcanzado = None # 1. Inicializamos
-        
-        if is_approved is None:
-            return Response(
-                {"error": "Se requiere el campo 'is_approved' (booleano)."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # 4. Lógica de Aprobación con validación de tipo
-        if str(is_approved).lower() in ['true', '1', 't', 'y', 'yes']:
-            
-            # Verificación de integridad según el tipo de RFQ
-            if rfq_base.type == 'mold':
-                # Verifica que existan registros en las tablas de moldes
-                if not MOLD_INFO_P1_I.objects.filter(id_rfq=rfq_base).exists():
-                    return Response({"error": "No se puede aprobar: Faltan datos técnicos del Molde (P1)."}, status=status.HTTP_400_BAD_REQUEST)
-            
-            elif rfq_base.type == 'die':
-                # Verifica que existan registros en las tablas de troqueles (Die)
-                if not DIE_TRIM_I.objects.filter(id_rfq=rfq_base).exists():
-                    return Response({"error": "No se puede aprobar: Faltan datos técnicos del Troquel (Die)."}, status=status.HTTP_400_BAD_REQUEST)
-            
-            # Transición a Nivel 4 (Enviado a Compras)
-            status_rfq.lev3 = False
-            status_rfq.lev4 = True
-            nivel_alcanzado = 'lev4' # 2. Registramos transición
-            estado_msg = "APPROVED_BY_IND (Aprobado y transferido a Compras)"
-        
-        else:
-            # RECHAZADO -> Regresa a Nivel 2 (Borrador para corrección)
-            status_rfq.lev3 = False
-            status_rfq.lev2 = True
-            nivel_alcanzado = 'lev2' # 2. Registramos transición
-            estado_msg = "DRAFT_IND (Rechazado, regresó a edición)"
-
-        status_rfq.save()
-
-        return Response({
-            "mensaje": f"RFQ {rfq_base.id_rfq} ({rfq_base.type}) evaluado correctamente.",
-            "id_rfq": rfq_base.id_rfq,
-            "estado_actual": estado_msg
-        }, status=status.HTTP_200_OK)
-    
 class SelectWinningSupplierView(APIView):
-    """
-    Endpoint: Selección de Proveedor y Envío a Validación
-    Método: PATCH
-    Cuerpo esperado: {"proveedor_id": "12"}
-    """
+    # Acceso: Purchases (normal) y Purchases_Admin, pero NO exclusivo del Admin.
+    # El Purchases normal selecciona al ganador VIRTUAL (→ Nivel 8: supplier_selected).
+    # La ratificación final la hace FalloFinalGerencialView (→ Nivel 9: rfq_closed).
     permission_classes = [IsAuthenticated, IsPurchasesUser]
 
     @transaction.atomic
     def patch(self, request, pk):
-        # 1. Obtener RFQ, Estado y Asignaciones
         rfq_base = get_object_or_404(RFQ_Base, pk=pk)
-        status_rfq = get_object_or_404(Status_RFQ, id_rfq=rfq_base.id_rfq)
 
-        # 2. Validar que estemos en Nivel 7 (Respondido por proveedor)
-        if not status_rfq.lev7:
+        # Guardia de seguridad: un Purchases_Admin NO debe usar esta vista para
+        # saltar la ratificación gerencial. El admin cierra licitaciones con
+        # FalloFinalGerencialView. Un admin que llame esta vista recibe un 403.
+        grupos = list(request.user.groups.values_list('name', flat=True))
+        if 'Purchases_Admin' in grupos and 'SuperAdmin' not in grupos:
             return Response(
-                {"error": "El RFQ no está en la fase de selección (Nivel 7)."},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Los Administradores de Compras deben usar el endpoint de Fallo Gerencial para adjudicar licitaciones."},
+                status=status.HTTP_403_FORBIDDEN,
             )
 
-        # 3. Obtener el ID enviado en la petición
+        if rfq_base.status != STATUS.WAITING_FOR_SUPPLIERS:
+            return Response(
+                {"error": "El RFQ no esta en la fase de seleccion (waiting_for_suppliers)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         proveedor_id = request.data.get('proveedor_id')
         if not proveedor_id:
             return Response({"error": "Se requiere el campo 'proveedor_id'."}, status=status.HTTP_400_BAD_REQUEST)
-        
-        asignacion = get_object_or_404(RFQ_Assignment, id_rfq=rfq_base, supplier_id=proveedor_id)
-        
-        if not asignacion:
-            return Response(
-                {"error": "Se requiere el campo 'proveedor_id' en el cuerpo de la petición."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
 
-        # 4. Limpiar posibles ganadores previos (por si el comprador cambia de decisión antes de aprobar)
+        asignacion = get_object_or_404(RFQ_Assignment, id_rfq=rfq_base, supplier_id=proveedor_id)
+
         RFQ_Assignment.objects.filter(id_rfq=rfq_base, is_winner=True).update(is_winner=False)
         asignacion.is_winner = True
         asignacion.save()
 
-        # 7. Actualizar la máquina de estados a Nivel 8 (Pendiente de Fallo Gerencial)
-        status_rfq.lev7 = False
-        status_rfq.lev8 = True
-        status_rfq.save()
-
-        registrar_tracking_rfq(rfq_base, 'lev8', request.user)
+        rfq_base.status = STATUS.SUPPLIER_SELECTED
+        rfq_base.save()
+        registrar_tracking_rfq(rfq_base, STATUS.SUPPLIER_SELECTED, request.user)
 
         return Response({
-            "mensaje": f"Proveedor marcado como ganador virtual. RFQ enviado a validación gerencial (Nivel 8).",
-            "id_rfq": rfq_base.id_rfq
-        }, status=status.HTTP_200_OK)
+            "mensaje": "Proveedor marcado como ganador (seleccion virtual). RFQ enviado a validacion gerencial para fallo final.",
+            "id_rfq": rfq_base.id_rfq,
+        })
+
+
+class FalloFinalGerencialView(APIView):
+    permission_classes = [IsAuthenticated, IsPurchasesAdmin]
+
+    @transaction.atomic
+    def patch(self, request, pk):
+        rfq_base = get_object_or_404(RFQ_Base, pk=pk)
+
+        if rfq_base.status != STATUS.SUPPLIER_SELECTED:
+            return Response(
+                {"error": f"El RFQ {rfq_base.id_rfq} no se encuentra en espera de fallo gerencial."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        asignacion = get_object_or_404(RFQ_Assignment, id_rfq=rfq_base, is_winner=True)
+        accion = request.data.get('accion', request.data.get('action', '')).lower()
+        rfq_type_label = "Molde" if rfq_base.type == 'mold' else "Troquel"
+
+        if accion in ('aprobar', 'approve'):
+            rfq_base.status = STATUS.RFQ_CLOSED
+            rfq_base.save()
+            registrar_tracking_rfq(rfq_base, STATUS.RFQ_CLOSED, request.user)
+            proveedor_ganador = asignacion.supplier.username if asignacion.supplier else None
+            mensaje = f"Fallo aprobado. El {rfq_type_label} ha sido adjudicado y la licitacion esta cerrada."
+
+        elif accion in ('rechazar', 'reject'):
+            asignacion.is_winner = False
+            asignacion.save()
+            rfq_base.status = STATUS.WAITING_FOR_SUPPLIERS
+            rfq_base.save()
+            registrar_tracking_rfq(rfq_base, STATUS.WAITING_FOR_SUPPLIERS, request.user)
+            proveedor_ganador = None
+            mensaje = f"Fallo rechazado. Se revoco la seleccion y el {rfq_type_label} regresa a analisis."
+
+        else:
+            return Response({"error": "Accion invalida. Los valores permitidos son 'aprobar'/'approve' o 'rechazar'/'reject'."}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({
+            "mensaje": mensaje,
+            "id_rfq": rfq_base.id_rfq,
+            "tipo": rfq_base.type,
+            "proveedor_ganador": proveedor_ganador,
+        })
+
+
+# ── RFQ — Supplier Portal ─────────────────────────────────────────────────────
+
+class BuzonProveedorListView(generics.ListAPIView):
+    serializer_class = RFQBaseSerializer
+    permission_classes = [IsAuthenticated, IsSupplier]
+
+    def get_queryset(self):
+        rfqs_asignados_ids = RFQ_Assignment.objects.filter(
+            supplier=self.request.user
+        ).values_list('id_rfq_id', flat=True)
+
+        return RFQ_Base.objects.filter(
+            id_rfq__in=rfqs_asignados_ids,
+            status__in=STATUS.SUPPLIER_ACTIVE,
+        )
+
+
+class CotizacionProveedorView(APIView):
+    permission_classes = [IsAuthenticated, IsSupplier]
+
+    @transaction.atomic
+    def post(self, request, pk):
+        rfq_base = get_object_or_404(RFQ_Base, pk=pk)
+
+        if rfq_base.status not in STATUS.SUPPLIER_ACTIVE:
+            return Response(
+                {"error": "El RFQ no esta habilitado para recibir cotizaciones."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        data = request.data
+        is_draft = data.get('is_draft', True)
+        proveedor_identificador = request.user.username
+
+        # Sanitise cost dicts: drop DB-internal / metadata keys.
+        # Replace None numeric values with 0 so NOT NULL FloatField columns
+        # never receive NULL.  DateField / CharField nulls are stripped instead
+        # of converted to 0 to avoid type errors on re-submission.
+        _DB_KEYS = frozenset({
+            'id', 'id_rfq_id', 'supplier_id', 'supplier',
+            'Last_change', 'Last_edit_by', 'Last_edited_by', 'Elaborated_by',
+        })
+
+        def _clean_cost(raw):
+            cleaned = {}
+            for k, v in (raw or {}).items():
+                if k in _DB_KEYS:
+                    continue
+                cleaned[k] = 0 if v is None else v
+            return cleaned
+
+        try:
+            if rfq_base.type == 'mold':
+                bloques = [
+                    ('mold_cost_p1', MOLD_COSTBR_P1_S),
+                    ('mold_cost_p2', MOLD_COSTBR_P2_S),
+                    ('mold_cost_p3', MOLD_COSTBR_P3_S),
+                    ('mold_cost_p4', MOLD_COSTBR_P4_S),
+                    ('mold_cost_p5', MOLD_COSTBR_P5_S),
+                    ('mold_cavities_p1', MOLD_CAVITIES_P1_S),
+                    ('mold_cavities_p2', MOLD_CAVITIES_P2_S),
+                    ('mold_cavities_p3', MOLD_CAVITIES_P3_S),
+                    ('mold_info_p1', MOLD_INFO_P1_S),
+                    ('mold_info_p2', MOLD_INFO_P2_S),
+                ]
+                for key, model in bloques:
+                    cost_data = _clean_cost(data.get(key))
+                    if cost_data:
+                        # info tables and cavities use 'supplier' FK, others use 'Elaborated_by' string
+                        if model in (MOLD_INFO_P1_S, MOLD_INFO_P2_S, DIE_TRIM_S, MOLD_CAVITIES_P1_S, MOLD_CAVITIES_P2_S, MOLD_CAVITIES_P3_S):
+                            model.objects.update_or_create(id_rfq=rfq_base, supplier=request.user, defaults=cost_data)
+                        else:
+                            cost_data['Elaborated_by'] = proveedor_identificador
+                            model.objects.update_or_create(id_rfq=rfq_base, Elaborated_by=proveedor_identificador, defaults=cost_data)
+
+            elif rfq_base.type == 'die':
+                bloques_die = [
+                    ('die_cost_p1', DIE_COSTBR_P1_S),
+                    ('die_cost_p2', DIE_COSTBR_P2_S),
+                    ('die_cost_p3', DIE_COSTBR_P3_S),
+                    ('die_cost_p4', DIE_COSTBR_P4_S),
+                    ('die_trim_s', DIE_TRIM_S),
+                ]
+                for key, model in bloques_die:
+                    cost_data = _clean_cost(data.get(key))
+                    if cost_data:
+                        # DIE P2, P3, P4 and TRIM_S use supplier, P1 uses Elaborated_by
+                        if model in (MOLD_INFO_P1_S, MOLD_INFO_P2_S, DIE_TRIM_S, DIE_COSTBR_P2_S, DIE_COSTBR_P3_S, DIE_COSTBR_P4_S):
+                            model.objects.update_or_create(id_rfq=rfq_base, supplier=request.user, defaults=cost_data)
+                        else:
+                            cost_data['Elaborated_by'] = proveedor_identificador
+                            model.objects.update_or_create(id_rfq=rfq_base, Elaborated_by=proveedor_identificador, defaults=cost_data)
+
+            if is_draft:
+                estado_msg = "Cotizacion guardada como borrador."
+            else:
+                RFQ_Assignment.objects.filter(
+                    id_rfq=rfq_base, supplier=request.user
+                ).update(has_responded=True)
+
+                if rfq_base.status == STATUS.SENT_TO_SUPPLIERS:
+                    rfq_base.status = STATUS.WAITING_FOR_SUPPLIERS
+                    rfq_base.save()
+                    registrar_tracking_rfq(rfq_base, STATUS.WAITING_FOR_SUPPLIERS, request.user)
+
+                estado_msg = "Cotizacion enviada oficialmente para revision."
+
+            return Response({"mensaje": estado_msg, "id_rfq": rfq_base.id_rfq})
+
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# ── Dashboards ────────────────────────────────────────────────────────────────
+
+def _build_time_series(range_param):
+    """Return (dates, labels) for the requested time range."""
+    today = timezone.now().date()
+    if range_param == 'month':
+        days = 30
+        dates = [today - timedelta(days=i) for i in range(days - 1, -1, -1)]
+        labels = [d.strftime('%b %d') for d in dates]
+    elif range_param == 'quarter':
+        # 12 weekly buckets
+        dates = [today - timedelta(weeks=i) for i in range(11, -1, -1)]
+        labels = [f"W{i+1}" for i in range(12)]
+    else:  # week (default)
+        days = 7
+        dates = [today - timedelta(days=i) for i in range(days - 1, -1, -1)]
+        labels = [d.strftime('%a') for d in dates]
+    return dates, labels
+
+
+class DashboardIndustrializacionView(APIView):
+    permission_classes = [IsAuthenticated, IsIndUser]
+
+    def get(self, request):
+        range_param = request.query_params.get('range', 'week')
+        all_rfqs = RFQ_Base.objects.all()
+
+        borradores = all_rfqs.filter(status=STATUS.IND_DRAFT, submitted_for_review=False).count()
+        pendientes_jefatura = all_rfqs.filter(status=STATUS.IND_DRAFT, submitted_for_review=True).count()
+        enviados_a_compras = all_rfqs.filter(status__in=STATUS.PAST_IND).count()
+        cerrados = all_rfqs.filter(status=STATUS.RFQ_CLOSED).count()
+
+        distribucion = all_rfqs.values('type').annotate(total=Count('id_rfq'))
+        data_distribucion = {item['type']: item['total'] for item in distribucion}
+
+        # Lead time KPI
+        lead_times_dias = []
+        for rfq_id in all_rfqs.exclude(status=STATUS.IND_DRAFT).values_list('id_rfq', flat=True):
+            t_ini = RFQ_Tracking.objects.filter(id_rfq_id=rfq_id, nivel_alcanzado=STATUS.IND_DRAFT).order_by('fecha_hora').first()
+            t_fin = RFQ_Tracking.objects.filter(id_rfq_id=rfq_id, nivel_alcanzado=STATUS.SENT_TO_PURCHASES).order_by('fecha_hora').first()
+            if t_ini and t_fin and t_fin.fecha_hora > t_ini.fecha_hora:
+                lead_times_dias.append((t_fin.fecha_hora - t_ini.fecha_hora).total_seconds() / 86400.0)
+
+        lead_time_promedio = sum(lead_times_dias) / len(lead_times_dias) if lead_times_dias else 0
+
+        # Time-series data
+        dates, labels = _build_time_series(range_param)
+
+        # Drafts created per period
+        drafts_per_period = []
+        accepted_per_period = []
+        declined_per_period = []
+        draft_to_sent_per_period = []
+
+        for d in dates:
+            day_start = timezone.make_aware(
+                timezone.datetime.combine(d, timezone.datetime.min.time())
+            )
+            day_end = day_start + timedelta(days=1)
+            created = all_rfqs.filter(modified_date__gte=day_start, modified_date__lt=day_end).count()
+            closed = all_rfqs.filter(
+                status=STATUS.RFQ_CLOSED,
+                modified_date__gte=day_start, modified_date__lt=day_end
+            ).count()
+            drafts_per_period.append(created)
+            accepted_per_period.append(closed)
+            declined_per_period.append(0)  # no rejection tracking yet
+
+            # Average days for transitions on this day
+            transitions = RFQ_Tracking.objects.filter(
+                nivel_alcanzado=STATUS.SENT_TO_PURCHASES,
+                fecha_hora__gte=day_start,
+                fecha_hora__lt=day_end,
+            )
+            if transitions.exists():
+                total_days = 0
+                count = 0
+                for t in transitions:
+                    first_draft = RFQ_Tracking.objects.filter(
+                        id_rfq_id=t.id_rfq_id, nivel_alcanzado=STATUS.IND_DRAFT
+                    ).order_by('fecha_hora').values_list('fecha_hora', flat=True).first()
+                    if first_draft:
+                        total_days += (t.fecha_hora - first_draft).total_seconds() / 86400.0
+                        count += 1
+                avg_days = total_days / count if count > 0 else 0
+                draft_to_sent_per_period.append(round(avg_days, 2))
+            else:
+                draft_to_sent_per_period.append(0)
+
+        total_accepted = sum(accepted_per_period)
+        total_drafts = sum(drafts_per_period)
+        acceptance_rate = round(total_accepted / total_drafts * 100, 1) if total_drafts else 0
+
+        return Response({
+            "estado_requerimientos": {
+                "en_borrador_lev2": borradores,
+                "esperando_firma_jefe_lev3": pendientes_jefatura,
+                "liberados_a_compras_lev4": enviados_a_compras,
+                "proyectos_adjudicados_lev9": cerrados,
+            },
+            "distribucion_herramientas": data_distribucion,
+            "kpis": {"lead_time_tecnico_dias": round(lead_time_promedio, 2)},
+            # Time-series shape expected by frontend Dashboard.jsx
+            "statusChangeData": {
+                "labels": labels,
+                "draftToSent": draft_to_sent_per_period,
+                "createdToDraft": drafts_per_period,
+                "stats": {
+                    "avgDraftToSent": round(lead_time_promedio, 2),
+                    "fastestDraftToSent": round(min(lead_times_dias), 2) if lead_times_dias else 0,
+                    "slowestDraftToSent": round(max(lead_times_dias), 2) if lead_times_dias else 0,
+                },
+            },
+            "rfqDistributionData": {
+                "labels": labels,
+                "drafts": drafts_per_period,
+                "accepted": accepted_per_period,
+                "declined": declined_per_period,
+                "stats": {
+                    "totalDrafts": total_drafts,
+                    "totalAccepted": total_accepted,
+                    "totalDeclined": 0,
+                    "acceptanceRate": acceptance_rate,
+                },
+            },
+        })
+
+
+class DashboardComprasView(APIView):
+    permission_classes = [IsAuthenticated, IsPurchasesUser]
+
+    def get(self, request):
+        range_param = request.query_params.get('range', 'week')
+        all_rfqs = RFQ_Base.objects.all()
+
+        bandeja_entrada = all_rfqs.filter(status=STATUS.SENT_TO_PURCHASES).count()
+        en_cotizacion = all_rfqs.filter(status=STATUS.SENT_TO_SUPPLIERS).count()
+        en_analisis = all_rfqs.filter(status=STATUS.WAITING_FOR_SUPPLIERS).count()
+        listos_para_fallo = all_rfqs.filter(status=STATUS.SUPPLIER_SELECTED).count()
+
+        total_asignaciones = RFQ_Assignment.objects.count()
+        cotizaciones_recibidas = RFQ_Assignment.objects.filter(has_responded=True).count()
+        tasa_respuesta = (cotizaciones_recibidas / total_asignaciones * 100) if total_asignaciones > 0 else 0
+
+        tiempos_respuesta_horas = []
+        rfqs_cotizados_ids = all_rfqs.filter(
+            status__in=[STATUS.WAITING_FOR_SUPPLIERS, STATUS.SUPPLIER_SELECTED, STATUS.RFQ_CLOSED]
+        ).values_list('id_rfq', flat=True)
+
+        for rfq_id in rfqs_cotizados_ids:
+            t6 = RFQ_Tracking.objects.filter(id_rfq_id=rfq_id, nivel_alcanzado=STATUS.SENT_TO_SUPPLIERS).order_by('fecha_hora').first()
+            t7 = RFQ_Tracking.objects.filter(id_rfq_id=rfq_id, nivel_alcanzado=STATUS.WAITING_FOR_SUPPLIERS).order_by('fecha_hora').first()
+            if t6 and t7 and t7.fecha_hora > t6.fecha_hora:
+                tiempos_respuesta_horas.append((t7.fecha_hora - t6.fecha_hora).total_seconds() / 3600.0)
+
+        tiempo_promedio = sum(tiempos_respuesta_horas) / len(tiempos_respuesta_horas) if tiempos_respuesta_horas else 0
+
+        # Time-series data (mirrors structure from DashboardIndustrializacionView)
+        dates, labels = _build_time_series(range_param)
+        new_per_period = []
+        published_per_period = []
+        closed_per_period = []
+
+        for d in dates:
+            day_start = timezone.make_aware(
+                timezone.datetime.combine(d, timezone.datetime.min.time())
+            )
+            day_end = day_start + timedelta(days=1)
+            new_per_period.append(
+                all_rfqs.filter(status=STATUS.SENT_TO_PURCHASES,
+                                modified_date__gte=day_start, modified_date__lt=day_end).count()
+            )
+            published_per_period.append(
+                all_rfqs.filter(status=STATUS.SENT_TO_SUPPLIERS,
+                                modified_date__gte=day_start, modified_date__lt=day_end).count()
+            )
+            closed_per_period.append(
+                all_rfqs.filter(status=STATUS.RFQ_CLOSED,
+                                modified_date__gte=day_start, modified_date__lt=day_end).count()
+            )
+
+        return Response({
+            "funnel_cotizaciones": {
+                "nuevos_requerimientos_lev4": bandeja_entrada,
+                "esperando_proveedores_lev6": en_cotizacion,
+                "analisis_costos_lev7": en_analisis,
+                "pendientes_autorizacion_lev8": listos_para_fallo,
+            },
+            "kpis": {
+                "tasa_respuesta_proveedores": round(tasa_respuesta, 2),
+                "tiempo_promedio_respuesta_horas": round(tiempo_promedio, 2),
+            },
+            "statusChangeData": {
+                "labels": labels,
+                "newToPublished": published_per_period,
+                "publishedToClosed": closed_per_period,
+                "stats": {
+                    "avgResponseTime": round(tiempo_promedio, 2),
+                    "responseRate": round(tasa_respuesta, 2),
+                },
+            },
+            "rfqDistributionData": {
+                "labels": labels,
+                "drafts": new_per_period,
+                "accepted": closed_per_period,
+                "declined": [0] * len(labels),
+                "stats": {
+                    "totalDrafts": bandeja_entrada,
+                    "totalAccepted": all_rfqs.filter(status=STATUS.RFQ_CLOSED).count(),
+                    "totalDeclined": 0,
+                    "acceptanceRate": round(tasa_respuesta, 2),
+                },
+            },
+        })
+
+
+class DashboardProveedorView(APIView):
+    permission_classes = [IsAuthenticated, IsSupplier]
+
+    def get(self, request):
+        asignaciones = RFQ_Assignment.objects.filter(supplier=request.user)
+        ids_rfqs = asignaciones.values_list('id_rfq_id', flat=True)
+
+        rfqs = RFQ_Base.objects.filter(id_rfq__in=ids_rfqs)
+
+        histograma = rfqs.annotate(
+            mes=TruncMonth('modified_date')
+        ).values('mes').annotate(total=Count('id_rfq')).order_by('mes')
+
+        borradores = rfqs.filter(status__in=STATUS.SUPPLIER_ACTIVE).count()
+        aceptados = asignaciones.filter(is_winner=True).count()
+        declinados = asignaciones.filter(
+            id_rfq__in=RFQ_Assignment.objects.filter(is_winner=True).exclude(
+                supplier=request.user
+            ).values_list('id_rfq_id', flat=True)
+        ).count()
+
+        success_rate = (aceptados / asignaciones.count() * 100) if asignaciones.count() > 0 else 0
+
+        data_histograma = [
+            {"mes": item['mes'].strftime('%Y-%m'), "total": item['total']}
+            for item in histograma if item['mes']
+        ]
+
+        return Response({
+            "histograma_mensual": data_histograma,
+            "metricas": {
+                "rfqs_en_borrador": borradores,
+                "rfqs_ganados": aceptados,
+                "rfqs_perdidos": declinados,
+                "win_rate_porcentaje": round(success_rate, 2),
+            },
+        })
+
+class IASugerenciasProveedoresView(APIView):
+    permission_classes = [IsAuthenticated, IsPurchasesUser]
+
+    def get(self, request, pk):
+        rfq = get_object_or_404(RFQ_Base, pk=pk)
+        
+        # MOCK DATA para desarrollo
+        mock_response = {
+            "predictions": [
+                {"supplier": "Sup01", "price": 258852.83, "price_low": 220014.45, "price_high": 297691.21},
+                {"supplier": "Sup02", "price": 256448.52, "price_low": 217970.88, "price_high": 294926.15},
+                {"supplier": "Sup03", "price": 254529.02, "price_low": 216339.39, "price_high": 292718.66}
+            ],
+            "message": "Predictions generated from rfq_mlp_model2.pt."
+        }
+        return Response(mock_response, status=status.HTTP_200_OK)

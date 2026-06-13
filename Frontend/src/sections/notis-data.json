@@ -1,0 +1,150 @@
+{
+  "notifications": {
+    "industrialization": [
+      {
+        "id": 1,
+        "title": "RFQ Draft Saved",
+        "message": "RFQ SOL-001 has been saved as draft",
+        "type": "info",
+        "categoryId": "industrialization_draft",
+        "rfqId": "SOL-001",
+        "date": "2024-05-20T10:30:00Z",
+        "read": false
+      },
+      {
+        "id": 2,
+        "title": "Sent to Purchases",
+        "message": "RFQ SOL-002 has been forwarded to Purchases",
+        "type": "success",
+        "categoryId": "sent_to_purchases",
+        "rfqId": "SOL-002",
+        "date": "2024-05-20T09:30:00Z",
+        "read": false
+      },
+      {
+        "id": 3,
+        "title": "Supplier Selected",
+        "message": "Tech Supplies Co. selected for RFQ SOL-003",
+        "type": "success",
+        "categoryId": "supplier_selected",
+        "rfqId": "SOL-003",
+        "date": "2024-05-19T14:00:00Z",
+        "read": true
+      },
+      {
+        "id": 4,
+        "title": "RFQ Closed",
+        "message": "RFQ SOL-004 closed. Supplier: Global Materials Inc.",
+        "type": "info",
+        "categoryId": "rfq_closed",
+        "rfqId": "SOL-004",
+        "date": "2024-05-18T10:00:00Z",
+        "read": false
+      }
+    ],
+    "purchases": [
+      {
+        "id": 101,
+        "title": "New RFQ Received",
+        "message": "RFQ SOL-005 received from Industrialization",
+        "type": "info",
+        "categoryId": "sent_to_purchases",
+        "rfqId": "SOL-005",
+        "date": "2024-05-20T11:00:00Z",
+        "read": false
+      },
+      {
+        "id": 102,
+        "title": "Purchases Draft",
+        "message": "RFQ SOL-006 awaiting review",
+        "type": "warning",
+        "categoryId": "purchases_draft",
+        "rfqId": "SOL-006",
+        "date": "2024-05-20T08:00:00Z",
+        "read": false
+      },
+      {
+        "id": 103,
+        "title": "Sent to Suppliers",
+        "message": "RFQ SOL-007 sent to 5 suppliers",
+        "type": "success",
+        "categoryId": "sent_to_suppliers",
+        "rfqId": "SOL-007",
+        "date": "2024-05-19T16:00:00Z",
+        "read": false
+      },
+      {
+        "id": 104,
+        "title": "Supplier Response",
+        "message": "MetalWorks Ltd. submitted quotation for RFQ SOL-008",
+        "type": "info",
+        "categoryId": "suppliers_response",
+        "rfqId": "SOL-008",
+        "date": "2024-05-19T10:00:00Z",
+        "read": false
+      },
+      {
+        "id": 105,
+        "title": "Waiting for Suppliers",
+        "message": "RFQ SOL-009: 2 of 4 responses received",
+        "type": "warning",
+        "categoryId": "waiting_for_suppliers",
+        "rfqId": "SOL-009",
+        "date": "2024-05-18T15:00:00Z",
+        "read": true
+      },
+      {
+        "id": 106,
+        "title": "Supplier Selected",
+        "message": "ElectroParts Co. selected for RFQ SOL-010",
+        "type": "success",
+        "categoryId": "supplier_selected",
+        "rfqId": "SOL-010",
+        "date": "2024-05-17T12:00:00Z",
+        "read": false
+      }
+    ],
+    "suppliers": [
+      {
+        "id": 201,
+        "title": "New RFQ Assignment",
+        "message": "Invited to quote for RFQ SOL-011",
+        "type": "info",
+        "categoryId": "sent_to_suppliers",
+        "rfqId": "SOL-011",
+        "date": "2024-05-20T09:00:00Z",
+        "read": false
+      },
+      {
+        "id": 202,
+        "title": "Draft Response Saved",
+        "message": "Draft response for RFQ SOL-012 saved",
+        "type": "info",
+        "categoryId": "suppliers_draft",
+        "rfqId": "SOL-012",
+        "date": "2024-05-19T14:30:00Z",
+        "read": false
+      },
+      {
+        "id": 203,
+        "title": "Quote Submitted",
+        "message": "Quotation for RFQ SOL-013 submitted",
+        "type": "success",
+        "categoryId": "suppliers_response",
+        "rfqId": "SOL-013",
+        "date": "2024-05-19T11:00:00Z",
+        "read": false
+      },
+      {
+        "id": 204,
+        "title": "Selection Notification",
+        "message": "Your company selected for RFQ SOL-014",
+        "type": "success",
+        "categoryId": "supplier_selected",
+        "rfqId": "SOL-014",
+        "date": "2024-05-16T09:00:00Z",
+        "read": true
+      }
+    ]
+  }
+}
